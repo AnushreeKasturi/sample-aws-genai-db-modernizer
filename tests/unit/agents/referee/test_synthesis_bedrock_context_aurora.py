@@ -116,7 +116,7 @@ def _generate(ranking=RANKING, query_groups=QUERY_GROUPS) -> dict:
     _CapturingAgent.last_prompt = ""
     with (
         patch("strands.Agent", _CapturingAgent),
-        patch("strands.models.bedrock.BedrockModel", lambda *a, **k: object()),
+        patch("src.shared.role_bedrock_model.RoleBedrockModel", lambda *a, **k: object()),
     ):
         synthesis_report.generate_executive_summary(
             deterministic_summary="fallback",

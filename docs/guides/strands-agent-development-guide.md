@@ -109,10 +109,11 @@ bedrock`. These places build a `strands.Agent` with a `BedrockModel`:
 
 - `src/tools/analysis/llm_advisor_base.py` (`LlmAdvisorBase._get_agent`) — the analysis LLM advisor; builds a fresh agent per call and imports `strands` lazily
 - the six `src/tools/schema/*_schema_agent.py` modules (Aurora MySQL, Aurora PostgreSQL, DocumentDB, DynamoDB, ElastiCache, OpenSearch) — each builds a designer agent and a PE-reviewer agent, importing `strands` at module level, and hands them to `SchemaDesignRunner` (`src/tools/schema/base_schema_agent.py`), which runs the designer/reviewer loop but does not build agents itself
-- the `src/tools/schema/*_schema_designer.py` classes (DocumentDB, DynamoDB, ElastiCache)
 - `src/agents/referee/reality_check_handler.py` — the reality-check executive summary
 - `src/agents/referee/consolidation_validator.py` — the LLM validation step for consolidation decisions
 - `src/agents/referee/synthesis_report.py` — the synthesis executive summary
+
+Each one builds its model with `build_bedrock_model(Role.<ROLE>)` from `src/shared/models.py` (never a literal model ID, and never an `Agent()` without `model=`).
 
 The analysis advisor and the three referee modules import `strands` lazily; the
 referee modules wrap that import in `try`/`except ImportError`, log a warning and
@@ -147,10 +148,10 @@ def _get_agent(self):
     Agent per group ensures each call is stateless.
     """
     from strands import Agent
-    from strands.models.bedrock import BedrockModel
 
-    model_id = os.environ.get("ANALYSIS_MODEL_ID", "us.anthropic.claude-sonnet-4-6")
-    model = BedrockModel(model_id=model_id)
+    # Role ANALYSIS_ADVISOR (src/shared/models.py): model ID from
+    # ANALYSIS_MODEL_ID or the role default, request settings per model family.
+    model = build_bedrock_model(Role.ANALYSIS_ADVISOR)
     return Agent(
         model=model,
         system_prompt=self.system_prompt,

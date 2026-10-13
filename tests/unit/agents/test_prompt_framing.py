@@ -150,7 +150,7 @@ def test_synthesis_prompt_frames_injected_query_group_name(ranking: list[dict]) 
     _CapturingAgent.last_prompt = ""
     with (
         patch("strands.Agent", _CapturingAgent),
-        patch("strands.models.bedrock.BedrockModel", lambda *a, **k: object()),
+        patch("src.shared.role_bedrock_model.RoleBedrockModel", lambda *a, **k: object()),
     ):
         synthesis_report.generate_executive_summary(
             deterministic_summary="fallback",
@@ -178,7 +178,7 @@ def test_reality_check_prompt_frames_injected_database_name() -> None:
     _CapturingAgent.last_prompt = ""
     with (
         patch("strands.Agent", _CapturingAgent),
-        patch("strands.models.bedrock.BedrockModel", lambda *a, **k: object()),
+        patch("src.shared.role_bedrock_model.RoleBedrockModel", lambda *a, **k: object()),
     ):
         reality_check_handler._generate_executive_summary(
             database_name=f"db {INJECT}",

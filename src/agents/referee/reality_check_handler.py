@@ -7,15 +7,11 @@ ArtifactStore. Slots between assignment and schema design in the pipeline.
 
 import json
 import logging
-import os
 from collections import defaultdict
 from copy import deepcopy
 from datetime import UTC, datetime
 
-from src.agents.prompt_framing import (
-    SYSTEM_PROMPT_DATA_DIRECTIVE,
-    frame_untrusted,
-)
+from src.agents.prompt_framing import SYSTEM_PROMPT_DATA_DIRECTIVE, frame_untrusted
 from src.agents.referee.assignment_overrides import refresh_consolidated_assignment
 from src.agents.referee.aurora_choice import source_database_engine
 from src.agents.referee.cache_overlay import normalize_cache_owners
@@ -44,6 +40,7 @@ from src.agents.referee.reality_check_summary import finalize_executive_summary
 from src.contracts.assignment_models import AssignmentSource
 from src.contracts.reality_check_output import RealityCheckOutputContract
 from src.shared.engine_elimination import eliminated_engines as settled_eliminated_engines
+from src.shared.models import Role, build_bedrock_model, resolve_model_id
 from src.storage.artifact_store import ArtifactStore
 from src.storage.assignment_versioning import (
     next_assignment_version,
@@ -771,7 +768,6 @@ def _generate_executive_summary(
     """
     try:
         from strands import Agent
-        from strands.models.bedrock import BedrockModel
     except ImportError:
         logger.warning("Strands not available — skipping executive summary")
         return None
@@ -885,14 +881,7 @@ def _generate_executive_summary(
     )
 
     try:
-        model = BedrockModel(
-            model_id=os.environ.get(
-                "SUMMARY_MODEL_ID",
-                "us.anthropic.claude-sonnet-4-6",
-            ),
-            max_tokens=512,
-            temperature=0.2,
-        )
+        model = build_bedrock_model(Role.SUMMARY)
         agent = Agent(
             model=model,
             system_prompt=(
@@ -918,7 +907,7 @@ def _generate_executive_summary(
             return narrative
 
     except Exception as exc:
-        model_id = os.environ.get("SUMMARY_MODEL_ID", "us.anthropic.claude-sonnet-4-6")
+        model_id = resolve_model_id(Role.SUMMARY)
         # The underlying error from an LLM call can carry prompt/response
         # fragments (#143): full text at DEBUG only.
         logger.debug("LLM executive summary failed (model=%s): %s", model_id, exc)

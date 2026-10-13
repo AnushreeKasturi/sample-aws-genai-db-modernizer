@@ -42,7 +42,7 @@ def _generate(ranking: list[dict], table_mappings: list[dict] | None = None) -> 
     _CapturingAgent.last_system_prompt = ""
     with (
         patch("strands.Agent", _CapturingAgent),
-        patch("strands.models.bedrock.BedrockModel", lambda *a, **k: object()),
+        patch("src.shared.role_bedrock_model.RoleBedrockModel", lambda *a, **k: object()),
     ):
         synthesis_report.generate_executive_summary(
             deterministic_summary="fallback",

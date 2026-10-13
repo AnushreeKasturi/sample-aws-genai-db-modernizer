@@ -13,6 +13,8 @@ from __future__ import annotations
 import logging
 import os
 
+from src.shared.models import Role, resolve_model_id
+
 logger = logging.getLogger(__name__)
 
 
@@ -20,12 +22,9 @@ def build_agent_factory():
     """Return an agent_factory function for AgentRuntimeServer."""
     from src.atx_orchestrator.orchestrator import DBModernizationOrchestrator
 
-    # Model ID — must use cross-region inference profile prefix.
-    # Override via MODEL_ID env var if needed.
-    model_id = os.environ.get(
-        "MODEL_ID",
-        "us.anthropic.claude-sonnet-4-6",
-    )
+    # Model ID (role ATX_AGENT) — must use a cross-region inference profile.
+    # Override via the MODEL_ID env var if needed.
+    model_id = resolve_model_id(Role.ATX_AGENT)
 
     def agent_factory(mcp_client, storage_dir=None):
         logger.info("Creating DBModernizationOrchestrator model_id=%s", model_id)

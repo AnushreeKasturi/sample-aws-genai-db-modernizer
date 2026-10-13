@@ -153,7 +153,7 @@ pattern over copy-paste when a phase has per-engine variants.
 | `AGENT_TYPE` | (required) | Which agent this container serves; no default |
 | `ARTIFACT_DIR` | `/app/artifacts` | Local artifact directory (used when `S3_BUCKET` is unset) |
 | `S3_BUCKET` | (unset) | Set to use S3 instead of the local filesystem |
-| `MODEL_ID` | `us.anthropic.claude-sonnet-4-6` | Orchestrator/subagent LLM (cross-region inference profile). The analysis LLM advisor is set to its intended production model at deploy time via this variable. |
+| `MODEL_ID` | the `ATX_AGENT` role default in `src/shared/models.py` | Orchestrator/subagent LLM (cross-region inference profile). `pipeline/atx_deploy.py` sets it on every runtime from the same role default unless `ATX_MODEL_ID` or `--model` overrides it. The analysis LLM advisor reads `ANALYSIS_MODEL_ID` instead, which the deploy does not set. |
 | `AWS_REGION` | `us-east-1` | AWS region |
 
 ## Build

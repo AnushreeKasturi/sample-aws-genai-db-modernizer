@@ -36,6 +36,17 @@ Claude Code is the main way to run the tool, but the pipeline itself is a set of
     2. Make sure the account can invoke the Anthropic models this pipeline uses: Claude Sonnet (Reality Check validation and Synthesis) and Claude Opus (Schema Design). Most Bedrock model access is enabled by default; Anthropic models need a use-case form, submitted once per account (select the model in the Bedrock console's model catalog, or call `PutUseCaseForModelAccess`). See [Request access to models](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html).
     3. Re-run the command above.
 
+    Each model call has a named role in `src/shared/models.py`, which also builds request settings valid for the model's family. Override a role's model with an environment variable (the first one set wins):
+
+    | Role | Used by | Environment variable |
+    |---|---|---|
+    | Schema design | The six schema designers and PE reviewers | `SCHEMA_AGENT_MODEL_ID`, then `BEDROCK_MODEL_ID` (output cap: `SCHEMA_AGENT_MAX_TOKENS`) |
+    | Summary | Reality Check and Synthesis executive summaries | `SUMMARY_MODEL_ID` |
+    | Validator | Reality Check consolidation validation | `VALIDATOR_MODEL_ID`, then `SUMMARY_MODEL_ID` |
+    | Analysis advisor | Analysis-phase LLM advisor | `ANALYSIS_MODEL_ID` |
+    | Light check | Free-text answer validation (agent interaction API) | `LIGHT_CHECK_MODEL_ID` |
+    | AWS Transform agent | AWS Transform orchestrator and subagents | `MODEL_ID` |
+
 === "Local UI on its own"
 
     Run the API and the React UI directly, without Claude Code:

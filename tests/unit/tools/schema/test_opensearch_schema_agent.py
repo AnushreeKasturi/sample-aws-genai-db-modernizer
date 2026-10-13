@@ -465,7 +465,7 @@ class TestLoadSkill:
 class TestBuildModel:
     """Tests for _build_model BedrockModel construction."""
 
-    @patch("src.tools.schema.opensearch_schema_agent.BedrockModel")
+    @patch("src.shared.role_bedrock_model.RoleBedrockModel")
     def test_build_model_default_uses_opus(self, mock_bedrock_model):
         from src.tools.schema.opensearch_schema_agent import _build_model
 
@@ -488,7 +488,7 @@ class TestBuildModel:
         # Opus → thinking enabled
         assert call_kwargs["additional_request_fields"]["thinking"]["type"] == "enabled"
 
-    @patch("src.tools.schema.opensearch_schema_agent.BedrockModel")
+    @patch("src.shared.role_bedrock_model.RoleBedrockModel")
     def test_build_model_non_opus_no_thinking(self, mock_bedrock_model):
         from src.tools.schema.opensearch_schema_agent import _build_model
 
@@ -509,7 +509,7 @@ class TestBuildModel:
         # Non-opus → no thinking field
         assert call_kwargs["additional_request_fields"] == {}
 
-    @patch("src.tools.schema.opensearch_schema_agent.BedrockModel")
+    @patch("src.shared.role_bedrock_model.RoleBedrockModel")
     def test_build_model_uses_boto_config(self, mock_bedrock_model):
         """Verify a botocore Config is passed (read_timeout=300)."""
         from botocore.config import Config

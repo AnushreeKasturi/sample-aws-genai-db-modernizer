@@ -22,11 +22,7 @@ from typing import TYPE_CHECKING
 from src.agents.prompt_framing import SYSTEM_PROMPT_DATA_DIRECTIVE, frame_untrusted
 from src.agents.referee.assignment_resolver import retained_engine_for
 from src.agents.referee.aurora_choice import source_database_engine
-from src.agents.referee.cache_overlay import (
-    CACHE_OVERLAY_ENGINES,
-    PATTERN_LABELS,
-    overlay_summary,
-)
+from src.agents.referee.cache_overlay import CACHE_OVERLAY_ENGINES, PATTERN_LABELS, overlay_summary
 from src.agents.referee.routed_confidence import routed_fits
 from src.agents.referee.synthesis_grounding import (
     SUMMARY_GROUNDING_RULE,
@@ -42,12 +38,8 @@ from src.agents.schema_design.dynamodb_merge import OVERLAP_PREFIX, merge_overla
 from src.shared.capability_labels import CAPABILITY_DISPLAY_NAMES
 from src.shared.engine_names import display_source_database
 from src.shared.migration_wave_engines import cache_front_description
-from src.shared.ranking import (
-    PARTIAL_NOTE,
-    SIGNAL_ONLY_NOTE,
-    engine_confidence,
-    evidence_note,
-)
+from src.shared.models import Role, build_bedrock_model, resolve_model_id
+from src.shared.ranking import PARTIAL_NOTE, SIGNAL_ONLY_NOTE, engine_confidence, evidence_note
 from src.shared.signal_labels import signal_noun
 from src.shared.unsupported_pattern import (
     is_dedup_only_group_by,
@@ -3170,7 +3162,6 @@ def generate_executive_summary(
     """
     try:
         from strands import Agent
-        from strands.models.bedrock import BedrockModel
     except ImportError:
         logger.warning("Strands not available — using deterministic summary")
         return deterministic_summary
@@ -3321,16 +3312,7 @@ def generate_executive_summary(
     )
 
     try:
-        import os
-
-        model = BedrockModel(
-            model_id=os.environ.get(
-                "SUMMARY_MODEL_ID",
-                "us.anthropic.claude-sonnet-4-6",
-            ),
-            max_tokens=512,
-            temperature=0.2,
-        )
+        model = build_bedrock_model(Role.SUMMARY)
         agent = Agent(
             model=model,
             system_prompt=(
@@ -3357,7 +3339,7 @@ def generate_executive_summary(
             return narrative
 
     except Exception as exc:
-        model_id = os.environ.get("SUMMARY_MODEL_ID", "us.anthropic.claude-sonnet-4-6")
+        model_id = resolve_model_id(Role.SUMMARY)
         # The underlying error from an LLM call can carry prompt/response
         # fragments (#143): full text at DEBUG only.
         logger.debug(

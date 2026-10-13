@@ -22,6 +22,8 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 
+from src.shared.models import Role, build_bedrock_model
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
@@ -65,10 +67,8 @@ class LlmAdvisorBase(ABC):
         Agent per group ensures each call is stateless.
         """
         from strands import Agent
-        from strands.models.bedrock import BedrockModel
 
-        model_id = os.environ.get("ANALYSIS_MODEL_ID", "us.anthropic.claude-sonnet-4-6")
-        model = BedrockModel(model_id=model_id)
+        model = build_bedrock_model(Role.ANALYSIS_ADVISOR)
         return Agent(
             model=model,
             system_prompt=self.system_prompt,

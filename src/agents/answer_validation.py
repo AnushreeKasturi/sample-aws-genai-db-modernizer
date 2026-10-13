@@ -10,10 +10,12 @@ Requirements: 7.3
 
 from __future__ import annotations
 
+import json
 import logging
 
 from src.contracts.agent_interaction_models import AgentQuestion
 from src.contracts.assignment_models import ValidationResult
+from src.shared.models import Role, invoke_model_body, resolve_model_id
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +53,7 @@ def _validate_free_text(question: AgentQuestion, answer: str) -> ValidationResul
 
 
 def _bedrock_validate(question: AgentQuestion, answer: str) -> ValidationResult:
-    """Call Bedrock to check whether the answer addresses the question."""
+    """Call Bedrock (role LIGHT_CHECK) to check whether the answer addresses the question."""
     import boto3  # deferred import — only needed for free-text validation
 
     client = boto3.client("bedrock-runtime")
@@ -61,23 +63,25 @@ def _bedrock_validate(question: AgentQuestion, answer: str) -> ValidationResult:
         f"Answer: {answer}\n\n"
         f"Respond with only 'yes' or 'no'."
     )
+    model_id = resolve_model_id(Role.LIGHT_CHECK)
     response = client.invoke_model(
-        modelId="anthropic.claude-3-haiku-20240307-v1:0",
+        modelId=model_id,
         contentType="application/json",
         accept="application/json",
-        body=__import__("json").dumps(
-            {
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 10,
-                "messages": [{"role": "user", "content": prompt}],
-            }
+        body=json.dumps(
+            invoke_model_body(
+                Role.LIGHT_CHECK, [{"role": "user", "content": prompt}], model_id=model_id
+            )
         ),
     )
-    import json
 
     result = json.loads(response["body"].read())
-    answer_text = result["content"][0]["text"].strip().lower()
-    if answer_text.startswith("yes"):
+    # Newer models may lead with a (possibly empty) thinking block.
+    answer_text = next(
+        (block.get("text", "") for block in result["content"] if block.get("type") == "text"),
+        "",
+    )
+    if answer_text.strip().lower().startswith("yes"):
         return ValidationResult(valid=True)
     return ValidationResult(
         valid=False,
