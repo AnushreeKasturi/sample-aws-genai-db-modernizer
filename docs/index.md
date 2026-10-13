@@ -20,7 +20,7 @@ Run this command in [Claude Code](https://docs.anthropic.com/en/docs/claude-code
 
 ## Demo
 
-![A full /modernize run on the WordPress sample in Claude Code, time-lapsed, followed by the local UI](assets/modernizer-demo.gif)
+![A /modernize run on the WordPress sample in Claude Code, time-lapsed: the reality check's engine consolidation and the per-query assignment view before approval, then the local UI's query flow and report](assets/modernizer-demo.gif)
 
 *A full `/modernize` run on the WordPress sample (47 minutes, time-lapsed), then the local UI: the executive summary, the query flow, the cost per engine and the access pattern explorer.*
 

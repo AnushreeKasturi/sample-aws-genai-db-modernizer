@@ -10,7 +10,7 @@
 
 **The help site is at [aws-samples.github.io/sample-aws-genai-db-modernizer](https://aws-samples.github.io/sample-aws-genai-db-modernizer/).** It has the same quick start plus other ways to run the tool, how to read the results, a sample report, an FAQ and how to contribute. The overview and quick start below are the source for those pages on the site.
 
-![A full /modernize run on the WordPress sample in Claude Code, time-lapsed, followed by the local UI](docs/assets/modernizer-demo.gif)
+![A /modernize run on the WordPress sample in Claude Code, time-lapsed: the reality check's engine consolidation and the per-query assignment view before approval, then the local UI's query flow and report](docs/assets/modernizer-demo.gif)
 
 *A full `/modernize` run on the WordPress sample (47 minutes, time-lapsed), then the local UI: the executive summary, the query flow, the cost per engine and the access pattern explorer.*
 
