@@ -76,7 +76,7 @@ DOCKERFILE = "src/atx_orchestrator/Dockerfile.atx"
 EXECUTION_ROLE = os.environ.get("ATX_EXECUTION_ROLE", "AgentCoreExecutionRole")
 INVOKE_ROLE = os.environ.get("ATX_INVOKE_ROLE", "AWSTransformAgentInvokeRole")
 
-DEFAULT_MODEL_ID = os.environ.get("ATX_MODEL_ID", "us.anthropic.claude-sonnet-4-6")
+DEFAULT_MODEL_ID = os.environ.get("ATX_MODEL_ID", "")  # empty: the ATX_AGENT role default
 # Account-specific artifact bucket. Supply via --s3-bucket or ATX_S3_BUCKET (the
 # deploy pipeline injects it). Required for apply.
 DEFAULT_S3_BUCKET = os.environ.get("ATX_S3_BUCKET", "")
@@ -220,6 +220,23 @@ def runtime_name(prefix: str, agent: Agent) -> str:
     if not name[0].isalpha():
         raise SystemExit(f"Runtime name {name!r} must start with a letter.")
     return name
+
+
+def _role_default_model() -> str:
+    """The ATX_AGENT role default (``src/shared/models.py``) for every runtime's MODEL_ID.
+
+    Read from the role rather than kept here, so a default switch there reaches the
+    deployed AWS Transform agents. ``ATX_MODEL_ID`` / ``--model`` still override it.
+    """
+    import sys
+    from pathlib import Path
+
+    repo = str(Path(__file__).resolve().parent.parent)
+    if repo not in sys.path:
+        sys.path.insert(0, repo)
+    from src.shared.models import ROLE_SPECS, Role
+
+    return ROLE_SPECS[Role.ATX_AGENT].default_model
 
 
 def _env_for(agent: Agent, prefix: str, model_id: str, s3_bucket: str) -> dict[str, str]:
@@ -738,7 +755,7 @@ def main() -> None:
         sp.add_argument("--dry-run", action="store_true")
         if verb == "apply":
             sp.add_argument("--image-uri", help="ECR image URI (with @sha256 digest)")
-            sp.add_argument("--model", default=DEFAULT_MODEL_ID)
+            sp.add_argument("--model", default=DEFAULT_MODEL_ID or _role_default_model())
             sp.add_argument("--s3-bucket", default=DEFAULT_S3_BUCKET)
         if verb == "destroy":
             sp.add_argument(

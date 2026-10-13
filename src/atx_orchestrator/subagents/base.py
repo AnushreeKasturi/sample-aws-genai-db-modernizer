@@ -21,6 +21,7 @@ import re
 from collections.abc import Callable
 
 from src.shared.database_name import validate_database_name
+from src.shared.models import Role, resolve_model_id
 
 logger = logging.getLogger(__name__)
 
@@ -323,7 +324,7 @@ def make_subagent_factory(
                         manager.update_status(instance_id, "FAILED", status_reason=str(e)[:1024])
                     raise
 
-        model_id = os.environ.get("MODEL_ID", "us.anthropic.claude-sonnet-4-6")
+        model_id = resolve_model_id(Role.ATX_AGENT)
         return _Subagent(
             system_prompt=system_prompt,
             mcp_clients=[mcp_client] if mcp_client is not None else None,

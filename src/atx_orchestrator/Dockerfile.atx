@@ -112,7 +112,7 @@ USER appuser
 #                 match core-modernizer, and referee-synthesis takes upstream's
 #                 own "bedrock" default. Leaving it out avoids implying it is
 #                 still the control.
-#   MODEL_ID    — set per runtime; app.py already defaults to Sonnet 4.5.
+#   MODEL_ID    — set per runtime; the default is role ATX_AGENT in src/shared/models.py.
 ENV ARTIFACT_DIR=/app/artifacts \
     AWS_REGION=us-east-1 \
     AWS_DATA_PATH=/opt/botocore-models \

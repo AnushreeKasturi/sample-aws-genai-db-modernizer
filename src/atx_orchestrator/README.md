@@ -104,7 +104,7 @@ The current shape of this integration is recorded in `docs/architecture/decision
 | `AGENT_TYPE` | (required) | Which agent this container serves; no default |
 | `ARTIFACT_DIR` | `/app/artifacts` | Local artifact dir (used when `S3_BUCKET` unset) |
 | `S3_BUCKET` | (unset) | Set to use S3 instead of local filesystem |
-| `MODEL_ID` | `us.anthropic.claude-sonnet-4-6` | Orchestrator/subagent LLM (cross-region profile) |
+| `MODEL_ID` | `ATX_AGENT` role default (`src/shared/models.py`) | Orchestrator/subagent LLM (cross-region profile) |
 | `AWS_REGION` | `us-east-1` | AWS region |
 
 ## Build (ARM64 — required for Bedrock AgentCore / Graviton)
@@ -133,8 +133,8 @@ Non-obvious constraints Bedrock AgentCore imposes. `Dockerfile.atx` and
 - **`mcp_clients` is a list** (or `None`), never a singular `mcp_client=`.
 - **Define the subagent class inside `agent_factory()`.** A module-level subclass
   hangs in production containers; `subagents/base.py` handles this.
-- Serve on **port 8080 with a `/ping` healthcheck**, and use the cross-region model
-  id `us.anthropic.claude-sonnet-4-6`.
+- Serve on **port 8080 with a `/ping` healthcheck**, and use a cross-region model
+  id (an inference profile, as the `ATX_AGENT` role default is).
 
 ## Local tests (no AWS, no Docker required)
 

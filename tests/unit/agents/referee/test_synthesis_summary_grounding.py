@@ -387,7 +387,7 @@ def test_bedrock_prompt_carries_the_effective_architecture(det) -> None:
 
     with (
         patch("strands.Agent", side_effect=fake_agent),
-        patch("strands.models.bedrock.BedrockModel"),
+        patch("src.shared.role_bedrock_model.RoleBedrockModel"),
     ):
         synthesis_report.generate_executive_summary(
             det["summary"],

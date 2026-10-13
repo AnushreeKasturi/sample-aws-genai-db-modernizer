@@ -23,15 +23,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from strands import Agent
 from strands.models.bedrock import BedrockModel
 
-from src.agents.prompt_framing import (
-    SYSTEM_PROMPT_DATA_DIRECTIVE,
-    frame_customer_requests,
-)
+from src.agents.prompt_framing import SYSTEM_PROMPT_DATA_DIRECTIVE, frame_customer_requests
 from src.contracts.analysis_output import AnalysisOutputContract
 from src.contracts.aurora_design_delta import AuroraDesignDeltaContract
 from src.contracts.aurora_postgresql_model_output import AuroraPostgresqlModelOutputContract
 from src.contracts.collector_output import CollectorOutputContract
 from src.contracts.schema_design_input import project_schema_design_input
+from src.shared.models import Role, build_bedrock_model
 from src.tools.schema.aurora_common.bedrock_delta import designer_prompt as build_designer_prompt
 from src.tools.schema.aurora_common.bedrock_delta import (
     merge_or_correct,
@@ -113,25 +111,12 @@ def _load_skill(path: str) -> str:
 
 
 def _build_model() -> BedrockModel:
-    """Build the shared BedrockModel for both designer and PE agents."""
+    """Build the shared BedrockModel for both designer and PE agents (role SCHEMA_DESIGN)."""
     from botocore.config import Config
 
-    model_id = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-opus-4-6-v1")
-    max_tokens = int(os.environ.get("SCHEMA_AGENT_MAX_TOKENS", "65536"))
-
-    additional_fields = {}
-    if "opus" in model_id:
-        additional_fields["thinking"] = {
-            "type": "enabled",
-            "budget_tokens": 6000,
-        }
-
-    return BedrockModel(
-        model_id=model_id,
-        max_tokens=max_tokens,
-        temperature=1.0,
+    return build_bedrock_model(
+        Role.SCHEMA_DESIGN,
         region_name=os.environ.get("AWS_REGION", "us-east-1"),
-        additional_request_fields=additional_fields,
         boto_client_config=Config(read_timeout=300, connect_timeout=10),
     )
 

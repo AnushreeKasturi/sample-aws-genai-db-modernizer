@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from collections import Counter
 from collections.abc import Iterable, Mapping
 
@@ -35,6 +34,13 @@ from src.agents.referee.reality_check_request import moved_queries, moved_query_
 from src.agents.referee.tie_break import break_tie, settled_counts
 from src.agents.referee.triage import SOURCE_ENGINE_TO_AURORA
 from src.shared.engine_names import display_engine
+from src.shared.models import (
+    ROLE_SPECS,
+    Role,
+    build_bedrock_model,
+    converse_request_fields,
+    resolve_model_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -90,8 +96,9 @@ ENGINE_CONTEXT: dict[str, str] = {
 MAX_QUERIES_PER_CALL = 30
 
 # Output budget for one validation call: room for every query of a batch to be
-# flagged with a short reason, in compact JSON.
-VALIDATOR_MAX_TOKENS = 4096
+# flagged with a short reason, in compact JSON. Owned by the VALIDATOR role
+# (src/shared/models.py), which raises it on families that think by default.
+VALIDATOR_MAX_TOKENS = ROLE_SPECS[Role.VALIDATOR].max_tokens
 
 VALIDATOR_SYSTEM_PROMPT = (
     "You are a database migration expert validating engine consolidation decisions. "
@@ -1115,10 +1122,7 @@ def _report(from_engine: str, to_engine: str, queries: list[dict], flagged: list
 
 
 def _validator_model_id() -> str:
-    return os.environ.get(
-        "VALIDATOR_MODEL_ID",
-        os.environ.get("SUMMARY_MODEL_ID", "us.anthropic.claude-sonnet-4-6"),
-    )
+    return resolve_model_id(Role.VALIDATOR)
 
 
 def _error_label(exc: Exception) -> str:
@@ -1152,18 +1156,13 @@ def _try_strands_validator(
     """
     try:
         from strands import Agent
-        from strands.models.bedrock import BedrockModel
     except ImportError:
         return None
 
     prompt = _build_validation_prompt(from_engine, to_engine, queries, batch)
 
     try:
-        model = BedrockModel(
-            model_id=_validator_model_id(),
-            max_tokens=VALIDATOR_MAX_TOKENS,
-            temperature=0.0,
-        )
+        model = build_bedrock_model(Role.VALIDATOR, model_id=_validator_model_id())
         agent = Agent(
             model=model,
             system_prompt=VALIDATOR_SYSTEM_PROMPT,
@@ -1212,12 +1211,14 @@ def _try_boto3_validator(
     try:
         client = boto3.client("bedrock-runtime")
         response = client.converse(
-            modelId=_validator_model_id(),
+            **converse_request_fields(Role.VALIDATOR, model_id=_validator_model_id()),
             messages=[{"role": "user", "content": [{"text": prompt}]}],
             system=[{"text": VALIDATOR_SYSTEM_PROMPT}],
-            inferenceConfig={"maxTokens": VALIDATOR_MAX_TOKENS, "temperature": 0.0},
         )
-        response_text = response["output"]["message"]["content"][0]["text"]
+        # Newer models may lead with a reasoning block; take the first text block.
+        response_text = next(
+            block["text"] for block in response["output"]["message"]["content"] if "text" in block
+        )
     except Exception as exc:
         # Same reasoning as the Strands branch above: full text at DEBUG only.
         logger.debug("boto3 validation failed: %s", exc)
