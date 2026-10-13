@@ -36,8 +36,6 @@ Claude Code is the main way to run the tool, but the pipeline itself is a set of
     2. Make sure the account can invoke the Anthropic models this pipeline uses: Claude Sonnet (Reality Check validation and Synthesis) and Claude Opus (Schema Design). Most Bedrock model access is enabled by default; Anthropic models need a use-case form, submitted once per account (select the model in the Bedrock console's model catalog, or call `PutUseCaseForModelAccess`). See [Request access to models](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html).
     3. Re-run the command above.
 
-    ![Bedrock mode demo](assets/local-modernizer-bedrock.gif)
-
 === "Local UI on its own"
 
     Run the API and the React UI directly, without Claude Code:
