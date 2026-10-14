@@ -134,6 +134,11 @@ AURORA_COMMON_PATTERNS: list[CatalogPattern] = [
 # Aurora Common Anti-Pattern Catalog
 # ==========================================================================
 
+# The catalog's closing sentence for "no-relational-need": an open-finding hint that names
+# a fixed engine list. Report text drops it (synthesis_report._without_hedge, #649), so
+# it is a constant the report imports rather than a copy of the wording.
+NO_RELATIONAL_NEED_ENGINE_HINT = "This workload has no structural relational requirement and could run on a simpler, purpose-built engine (DynamoDB for key-value, ElastiCache for hot lookups)."
+
 AURORA_COMMON_ANTI_PATTERNS: list[CatalogAntiPattern] = [
     # Signals: Single-row SELECT by PK at >100 cps
     CatalogAntiPattern(
@@ -171,7 +176,8 @@ AURORA_COMMON_ANTI_PATTERNS: list[CatalogAntiPattern] = [
     CatalogAntiPattern(
         pattern_id="aurora-anti-05",
         pattern_type="no-relational-need",
-        description="Table with no foreign keys and no join participation — all queries are single-table CRUD. This workload has no structural relational requirement and could run on a simpler, purpose-built engine (DynamoDB for key-value, ElastiCache for hot lookups).",
+        description="Table with no foreign keys and no join participation — all queries are single-table CRUD. "
+        + NO_RELATIONAL_NEED_ENGINE_HINT,
         severity_weight=0.6,
         guidance="Evaluate whether this table benefits from Aurora's relational features. If it's purely key-value access, DynamoDB offers better cost/performance. If it's a hot lookup, ElastiCache is more appropriate.",
     ),

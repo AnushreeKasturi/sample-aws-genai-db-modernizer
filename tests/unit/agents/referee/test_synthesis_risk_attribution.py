@@ -30,6 +30,10 @@ import pytest
 
 from src.agents.referee.synthesis_data import EngineArtifacts, SynthesisData
 from src.agents.referee.synthesis_report import build_risk_assessment
+from src.tools.analysis.aurora_common_pattern_catalog import (
+    AURORA_COMMON_ANTI_PATTERNS,
+    NO_RELATIONAL_NEED_ENGINE_HINT,
+)
 
 
 def _qa(query_id: str, engine: str, in_scope: bool = True) -> dict:
@@ -382,3 +386,95 @@ def test_resolved_risk_text_is_grounded() -> None:
     result = build_risk_assessment(data, {"opensearch": "aurora_mysql"})
     res = next(r for r in result["resolved_risks"] if "Hot PK" in r["description"])
     assert "not part of the target architecture" in res["description"]
+
+
+# The real catalog text, so a reworded catalog keeps these tests meaningful.
+_CATALOG_HEDGE = next(
+    ap.description for ap in AURORA_COMMON_ANTI_PATTERNS if ap.pattern_type == "no-relational-need"
+)
+assert NO_RELATIONAL_NEED_ENGINE_HINT in _CATALOG_HEDGE
+
+
+def _with_catalog_text(data: SynthesisData) -> None:
+    for ap in data.engines["aurora_mysql"].analysis["workload_analysis"]["anti_patterns_detected"]:
+        if ap["anti_pattern_type"] == "no-relational-need":
+            ap["description"] = _CATALOG_HEDGE
+
+
+def test_resolved_move_states_the_decision_not_the_catalog_hedge() -> None:
+    """#649: once the assignment moved the queries, the resolved item says where they
+    went and drops the open-risk wording ("could run on a simpler engine (DynamoDB,
+    ElastiCache)"), which also named an engine nobody chose."""
+    data = _data()
+    _with_catalog_text(data)
+    _set_recommendation(
+        data, "aurora_mysql", "no-relational-need", "Consider DynamoDB for key-value access."
+    )
+    result = build_risk_assessment(data)
+    res = next(
+        r
+        for r in result["resolved_risks"]
+        if r["resolved_on"] == "dynamodb" and "foreign keys" in r["description"]
+    )
+    assert res["description"] == (
+        "[aurora_mysql] Moved to DynamoDB: Table with no foreign keys and no join "
+        "participation — all queries are single-table CRUD."
+    )
+    assert "could run on" not in res["description"]
+    assert "ElastiCache" not in res["description"]
+
+
+def test_resolved_move_without_remaining_queries_states_the_decision_too() -> None:
+    data = _data()
+    _with_catalog_text(data)
+    result = build_risk_assessment(data)
+    for r in result["resolved_risks"]:
+        assert "could run on a simpler" not in r["description"]
+    moved = [r for r in result["resolved_risks"] if r["resolved_on"] == "dynamodb"]
+    assert moved and all("Moved to DynamoDB: " in r["description"] for r in moved)
+
+
+def test_open_risks_drop_the_catalog_hedge_and_name_only_their_engine() -> None:
+    """#649: a risk re-attributed to DynamoDB must not suggest "a simpler engine
+    (DynamoDB..., ElastiCache...)"; the same holds for a risk that stays on its engine."""
+    data = _data()
+    _with_catalog_text(data)
+    reattributed = [
+        r
+        for r in build_risk_assessment(data)["risks"]
+        if "Flagged by" in r["description"] and "Table with no" in r["description"]
+    ]
+    assert reattributed and _engine(reattributed[0]) == "dynamodb"
+    for qa in data.assignment["query_assignments"]:
+        qa["assigned_engine"] = "aurora_mysql"
+    kept = [r for r in build_risk_assessment(data)["risks"] if "Table with no" in r["description"]]
+    assert kept and _engine(kept[0]) == "aurora_mysql"
+    for r in reattributed + kept:
+        assert "could run on" not in r["description"]
+        assert "ElastiCache" not in r["description"]
+        assert "single-table CRUD" in r["description"]
+
+
+def test_analysis_output_keeps_the_catalog_text() -> None:
+    data = _data()
+    _with_catalog_text(data)
+    build_risk_assessment(data)
+    aps = data.engines["aurora_mysql"].analysis["workload_analysis"]["anti_patterns_detected"]
+    assert any(ap["description"] == _CATALOG_HEDGE for ap in aps)
+
+
+def test_out_of_scope_resolved_risk_drops_the_hedge_too() -> None:
+    """The "every flagged query is out of scope" resolution keeps the finding's facts only."""
+    data = _data()
+    for ap in data.engines["aurora_mysql"].analysis["workload_analysis"]["anti_patterns_detected"]:
+        if ap["anti_pattern_type"] == "high-frequency-pk-lookup":
+            ap["description"] = "Hot lookups. " + NO_RELATIONAL_NEED_ENGINE_HINT
+    for qa in data.assignment["query_assignments"]:
+        if qa["query_id"] == "q-opt":
+            qa["in_scope"] = False
+    resolved = [
+        r
+        for r in build_risk_assessment(data)["resolved_risks"]
+        if r["resolved_on"] is None and "Hot lookups" in r["description"]
+    ]
+    assert [r["description"] for r in resolved] == ["[aurora_mysql] Hot lookups."]
