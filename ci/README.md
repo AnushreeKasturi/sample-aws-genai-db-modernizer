@@ -143,6 +143,21 @@ OS-level dependencies via `apt` and needs root, which Linux CI runners have.
 Locally (including macOS, where there is no `apt`) it drops `--with-deps` and
 installs just the browser binaries.
 
+## `needs_llm_run.sh`
+
+`./ci/needs_llm_run.sh [BASE]` (default `origin/main`) diffs `BASE...HEAD`
+(committed changes only; both sides of a rename count) and prints, per run,
+`required` or `not required` plus the matching paths: `e2e-llm` (the headless
+Claude Code run: session inputs and the builders and validators of its
+`llm_input`/request files) and `bedrock-smoke` (Bedrock-only call sites the
+headless run never reaches). The lists are `E2E_LLM` and `BEDROCK_SMOKE` in
+`ci/needs_llm_run.py`; a file can be in both. Any git error (bad base, shallow
+clone, no merge base) exits 2 with a message and no verdict. A unit test scans
+`src/` and `scripts/` for model imports, model-id env reads and
+`llm_input`/request builders, and fails if a hit is not listed. No model call,
+no secrets, not wired into a workflow: a post-merge real-model run on main and
+a Bedrock smoke run need the internal validation pipeline.
+
 ## `e2e-llm.sh`
 
 Headless `/modernize` run on model access (Bedrock or the Anthropic API):

@@ -106,8 +106,8 @@ and `ci/e2e-llm.sh` build it for you.
 - Pipeline output or `src/report/`: add `make e2e` (or
   `uv run pytest tests/e2e/test_pipeline.py -p no:xdist -q` for a quick pass);
   after a UI report change run `uv run python scripts/sync_report_template.py --check`.
-- `.claude/commands/`, `src/skills/`, `.claude/settings.ci.json`, `ci/llm/`, or
-  anything loaded into headless sessions (including this file): `make e2e-llm`.
+- `make e2e-llm` when `./ci/needs_llm_run.sh` prints `e2e-llm: required` (its
+  lists are the source of truth; `bedrock-smoke` covers Bedrock call sites).
 - `E2E_LLM_MODE` is `chat`, `ui` or `both`; `E2E_LLM_FIXTURE` is `wordpress`
   (fast iteration) or `discourse` (scale).
 - Read e2e-llm results in `test-results/llm-<mode>-<fixture>/`: `results.json`
