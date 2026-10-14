@@ -28,6 +28,21 @@ logger = logging.getLogger(__name__)
 
 _FORCED_KEYS = ("any", "tool")
 
+# The Sonnet 5 forced-turn fix overrides this private Strands method. If a
+# Strands release renames it, the override would silently stop applying, so
+# fail at import instead (the AWS Transform image installs Strands without the
+# lock file; src/atx_orchestrator/requirements.txt bounds the version too).
+_OVERRIDDEN_PRIVATE_METHODS = ("_get_additional_request_fields",)
+_missing = [name for name in _OVERRIDDEN_PRIVATE_METHODS if not hasattr(BedrockModel, name)]
+if _missing:
+    raise ImportError(
+        "strands.models.bedrock.BedrockModel no longer has "
+        + ", ".join(_missing)
+        + "; src/shared/role_bedrock_model.py overrides it to keep Strands' forced "
+        "structured-output retry valid per model family. Update the override for this "
+        "Strands version."
+    )
+
 
 def is_forced(tool_choice: ToolChoice | None) -> bool:
     """True for ``any`` or a named ``tool`` choice (the forced kinds)."""
