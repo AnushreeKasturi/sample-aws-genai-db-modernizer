@@ -34,6 +34,13 @@ from src.agents.schema_design.scope import (
 from src.contracts.aurora_design_delta import is_design_delta
 from src.storage.artifact_store import ArtifactStore
 from src.storage.assignment_versioning import engine_scope, read_assignment
+from src.tools.schema.design_metrics import (
+    METRIC_ENGINES,
+    UNFILTERED_PATTERNS_KEY,
+    check_design_numbers,
+    design_metrics_from_collector,
+    in_scope_pattern_count,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +145,10 @@ def filter_collector_for_assignment(
     filtered = dict(collector_output)
     filtered["queries"] = dict(collector_output.get("queries", {}))
     filtered["queries"]["query_patterns"] = filtered_queries
+    # Coverage (design_metrics, #626) compares the whole log, not this engine's share.
+    filtered["queries"].setdefault(
+        UNFILTERED_PATTERNS_KEY, in_scope_pattern_count(original_queries)
+    )
     filtered["database_schema"] = dict(collector_output.get("database_schema", {}))
     filtered["database_schema"]["tables"] = filtered_tables
 
@@ -209,7 +220,8 @@ def prepare_schema_design_input(
 
     Returns dict with keys:
       target_type, collector_output (filtered), analysis_output,
-      database_name, job_id
+      database_name, job_id, and for DynamoDB, DocumentDB and OpenSearch
+      design_metrics (the numbers the skill reads instead of computing, #626)
     """
     collector_key = f"{database_name}/{job_id}/collector/output.json"
     collector_output = store.read_json(collector_key)
@@ -226,13 +238,16 @@ def prepare_schema_design_input(
     analysis_key = f"{database_name}/{job_id}/analysis-{target_type}/analysis.json"
     analysis_output = store.read_json(analysis_key)
 
-    return {
+    llm_input = {
         "target_type": target_type,
         "collector_output": collector_output,
         "analysis_output": analysis_output,
         "database_name": database_name,
         "job_id": job_id,
     }
+    if target_type in METRIC_ENGINES:
+        llm_input["design_metrics"] = design_metrics_from_collector(target_type, collector_output)
+    return llm_input
 
 
 def validate_schema_design_output(output: dict, target_type: str) -> dict:
@@ -337,6 +352,15 @@ def finalize_schema_design(
     if not validation["valid"]:
         return {"status": "validation_failed", "errors": validation["errors"]}
 
+    if target_type in METRIC_ENGINES:
+        # Numbers the request provided in design_metrics must come back unchanged (#626).
+        metrics = _requested_design_metrics(
+            store, database_name, job_id, target_type, assignment_version
+        )
+        number_errors = check_design_numbers(target_type, output, metrics)
+        if number_errors:
+            return {"status": "validation_failed", "errors": number_errors}
+
     output, report = apply_schema_scope(
         store, database_name, job_id, target_type, output, assignment_version
     )
@@ -350,6 +374,34 @@ def finalize_schema_design(
     if merge_warnings:
         status["warnings"] = [*status.get("warnings", []), *merge_warnings]
     return status
+
+
+def _requested_design_metrics(
+    store: ArtifactStore,
+    database_name: str,
+    job_id: str,
+    target_type: str,
+    assignment_version: int,
+) -> dict | None:
+    """The ``design_metrics`` the external request gave the model, or None.
+
+    Read from the request file ``--llm-mode external`` wrote; without one,
+    recomputed from the store the way that request would have been. None when
+    neither is available (the hot-partition arithmetic is still checked).
+    """
+    request_key = f"{database_name}/{job_id}/llm_requests/schema_design_{target_type}.json"
+    try:
+        if store.exists(request_key):
+            metrics = store.read_json(request_key).get("design_metrics")
+            if isinstance(metrics, dict):
+                return metrics
+        recomputed = prepare_schema_design_input(
+            job_id, database_name, target_type, store, assignment_version
+        ).get("design_metrics")
+        return recomputed if isinstance(recomputed, dict) else None
+    except Exception as exc:  # best effort: a missing input only skips the comparison
+        logger.debug("design_metrics unavailable for %s/%s: %s", job_id, target_type, exc)
+        return None
 
 
 FULL_CONTRACT_DEPRECATION = (

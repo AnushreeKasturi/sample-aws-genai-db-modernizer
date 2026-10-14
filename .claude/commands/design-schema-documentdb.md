@@ -21,7 +21,7 @@ Read files with the Read tool (use `offset`/`limit` for large files). Search fil
 
 2. **Read input and domain expertise**
    a. Read: `artifacts/{database_name}/{job_id}/llm_requests/schema_design_documentdb.json`
-      - Contains: filtered queries, tables, analysis results, and `output_schema` (the exact JSON Schema your output must conform to)
+      - Contains: filtered queries, tables, analysis results, `design_metrics` (the `design_rps` and sizing figures computed for you: copy them, never recompute them; `--finalize` rejects a design whose numbers differ), and `output_schema` (the exact JSON Schema your output must conform to)
    b. Read: `src/skills/documentdb-data-modeling.md` (domain expertise guide)
 
 3. **Design the schema**
