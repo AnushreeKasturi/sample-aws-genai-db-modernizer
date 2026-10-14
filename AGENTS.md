@@ -88,9 +88,11 @@ and `ci/e2e-llm.sh` build it for you.
 - Run `uv sync` in each worktree; a worktree's `.venv` is its own.
 - The main clone's editable install points at its own `src/`, so if you reuse
   it from another worktree, set `PYTHONPATH` and `UV_NO_SYNC=1` instead.
+- Before fanning out, list each issue's files. Issues that share a file are
+  not independent: land the shared extraction first, decide the merge order,
+  then parallelize the rest.
 - Regenerate generated baselines (the routing snapshot, the contract schema
-  snapshot) on top of main rather than merging them.
-- Land shared extractions before the fixes that depend on them.
+  snapshot) on top of main on every rebase; never hand-merge them.
 
 ## Which test tier for which change
 
