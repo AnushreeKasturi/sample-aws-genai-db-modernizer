@@ -5,8 +5,8 @@ engine wins; no other engine preference exists." Three places in the
 routing code pick a winner among engines tied for the same top score for a
 query (or, for a co-dependency group, the group): the first assignment's
 owner tie-break (``assignment_resolver.break_owner_tie``), the reality
-check's placement step (``reality_check._pick_winner``), and the reality
-check's mandatory-engine-floor absorber (``reality_check.
+check's placement step (``reality_check_rules._pick_winner``), and the reality
+check's mandatory-engine-floor absorber (``reality_check_floors.
 _find_best_absorber_for_query`` and its co-dependency-group counterpart).
 Before #503 each of those three decided a *non-Aurora* tie its own way --
 table traffic, query count, or alphabetical name -- none of which is a

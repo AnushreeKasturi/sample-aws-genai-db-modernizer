@@ -90,7 +90,7 @@ SIGNAL_ENGINE_OVERRIDES: dict[str, str] = {
 # visible wildcard, to OpenSearch regardless of traffic or search depth --
 # exactly the mechanism that kept 4 shallow, low-traffic admin-search queries
 # on a standing OpenSearch domain in a maintainer's run (#326). Reusing
-# ``reality_check.opensearch_justification`` keeps the override and the
+# ``reality_check_floors.opensearch_justification`` keeps the override and the
 # reality-check floor applying the same rule, instead of two copies that can
 # drift. Scoped by override engine, not by signal name, so a future signal
 # that also maps to opensearch gets the same gate for free.
@@ -720,7 +720,7 @@ class AssignmentResolver:
         - The signal has specific query_ids attached
         - For a ``JUSTIFICATION_GATED_OVERRIDE_ENGINES`` target (opensearch,
           #475): the #326 justification floor
-          (``reality_check.opensearch_justification``) agrees, per query,
+          (``reality_check_floors.opensearch_justification``) agrees, per query,
           that the signal reflects real search depth and enough traffic or
           corpus size -- a signal alone (e.g. any ``LIKE``, including a
           parameterized ``LIKE ?`` with no visible wildcard) is not enough to

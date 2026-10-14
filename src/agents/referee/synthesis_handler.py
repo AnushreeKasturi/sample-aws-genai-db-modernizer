@@ -71,7 +71,7 @@ def _eliminated_engine_costs(
     #202), so their analysis artifacts are read directly here -- the same
     real, per-engine ``cost_estimate.monthly_cost_usd`` figure the reality
     check's own recommendation text quotes (``_engine_infra_cost`` in
-    reality_check.py). This is the only way a saving a recommendation names
+    reality_check_patterns.py). This is the only way a saving a recommendation names
     for an eliminated engine (e.g. "$271.80/mo") is also traceable in the TCO
     facts the report publishes, not just in prose. An engine missing an
     analysis artifact, or missing a cost estimate within it, is simply absent

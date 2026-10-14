@@ -24,7 +24,8 @@ import pytest
 import src.agents.referee.reality_check as reality_check
 from src.agents.referee.reality_check import UNIQUE_DELTA_THRESHOLD, resettle_after_corrections
 
-REALITY_CHECK_SOURCE = Path(reality_check.__file__)
+# reality_check.py and the step modules it is split into (#617).
+REALITY_CHECK_SOURCES = sorted(Path(reality_check.__file__).parent.glob("reality_check*.py"))
 
 
 def _assignments(engines: dict[str, list[str]]) -> list[dict]:
@@ -66,13 +67,15 @@ class TestTheAuroraOnlyRuleIsGone:
     def test_no_aurora_absorption_thresholds_or_pass_remain(self):
         """ADR-031 Decision 7 supersedes the Aurora-only pass "with its own
         fitness gate and thresholds"; nothing in the module defines them."""
-        tree = ast.parse(REALITY_CHECK_SOURCE.read_text())
+        trees = [ast.parse(path.read_text()) for path in REALITY_CHECK_SOURCES]
         defined = {
             node.id
+            for tree in trees
             for node in ast.walk(tree)
             if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
         } | {
             node.name
+            for tree in trees
             for node in ast.walk(tree)
             if isinstance(node, (ast.FunctionDef, ast.ClassDef))
         }

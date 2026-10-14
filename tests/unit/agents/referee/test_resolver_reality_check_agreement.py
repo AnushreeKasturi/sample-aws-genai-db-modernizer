@@ -587,7 +587,7 @@ class TestAbsorptionBehaviorChanges:
 # these may be *defined* anywhere under src/ except query_scoring.py --
 # a definition elsewhere would mean a second, separately drifting fit
 # function or capability table has come back. ``ENGINE_CAPABILITIES`` is
-# scoped to ``reality_check.py`` specifically rather than banned repo-wide:
+# scoped to the ``reality_check*.py`` modules rather than banned repo-wide:
 # ``capability_registry.py`` legitimately owns a table of the same name
 # (hard architectural constraints, a different fact from workload-fit
 # scoring), and that one must stay.
@@ -613,7 +613,7 @@ def test_nothing_outside_query_scoring_defines_a_fit_scorer():
         for pattern in _BANNED_DEFINITIONS:
             if pattern.search(text):
                 offenders.append(f"{path.relative_to(_REPO_SRC.parent)}: {pattern.pattern}")
-        if path.name == "reality_check.py" and _REALITY_CHECK_ONLY_BANNED.search(text):
+        if path.name.startswith("reality_check") and _REALITY_CHECK_ONLY_BANNED.search(text):
             offenders.append(
                 f"{path.relative_to(_REPO_SRC.parent)}: {_REALITY_CHECK_ONLY_BANNED.pattern}"
             )

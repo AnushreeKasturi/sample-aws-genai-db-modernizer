@@ -194,7 +194,7 @@ def never_justified_engines(reality_check: dict | None) -> set[str]:
     """Engines whose removal must never be presented as an infrastructure saving.
 
     An engine is in this set when every one of its consolidation records
-    carries ``workload_justified: False`` (``reality_check._workload_ever_
+    carries ``workload_justified: False`` (``reality_check_floors._workload_ever_
     justified``, #475 review finding 3) -- none of its FIRST-ASSIGNMENT
     queries ever cleared the #326 floor, so it was never justified by the
     workload to begin with, and removing it is not a saving to quote in the

@@ -577,7 +577,7 @@ def phase_reality_check(store, job_id: str, db: str, llm_mode: str) -> str:
 
 _REASON_LIMIT = 140  # keeps the reality_check status line compact (#329)
 
-# A draft reasoning pass inside reality_check.py's mandatory-engine
+# A draft reasoning pass inside reality_check_floors.py's mandatory-engine
 # justification floor builds its reason text with a bare issue tag, e.g.
 # "... does not meet its justification floor (#167) -- ...". Reconciliation
 # (reconcile_consolidations) usually replaces that text once query counts
