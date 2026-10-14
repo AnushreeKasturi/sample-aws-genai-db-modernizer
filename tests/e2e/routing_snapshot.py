@@ -49,8 +49,9 @@ The file is written with one query per line, sorted keys (see
 one unreadable multi-hundred-KB line.
 
 ``ROUTING_SNAPSHOT_EXTRA`` (optional, local only, never committed): the path
-to an extra, non-bundled ``collection.json`` (e.g. AdventureWorks, once it has
-one) to snapshot the same way. ``ROUTING_SNAPSHOT_EXTRA_DB`` names its engine
+to an extra, non-bundled ``collection.json`` to snapshot the same way (the
+bundled samples, including the synthetic SQL Server one, ``trailgear``, are
+always in the committed snapshot). ``ROUTING_SNAPSHOT_EXTRA_DB`` names its engine
 family / database name passed to the pipeline (default ``"extra"``); the
 output file is ``routing_snapshot_<db>.json``. Setting ``ROUTING_SNAPSHOT_EXTRA``
 switches ``--write`` entirely to the extra-fixture mode: it writes only
@@ -515,13 +516,13 @@ def _write_extra(reason: str) -> None:
 
 
 def _write(reason: str) -> None:
-    """Regenerate the committed baseline for wordpress and discourse only."""
-    from tests.e2e.pipeline import run_pipeline
+    """Regenerate the committed baseline for every bundled sample (``pipeline.SAMPLES``)."""
+    from tests.e2e.pipeline import SAMPLES, run_pipeline
 
     previous = json.loads(BASELINE.read_text()) if BASELINE.exists() else {}
     samples: dict[str, Any] = {}
     with tempfile.TemporaryDirectory() as tmp:
-        for sample in ("wordpress", "discourse"):
+        for sample in SAMPLES:
             result = run_pipeline(
                 sample, Path(tmp) / "artifacts", job_id=f"routing-snapshot-{sample}"
             )

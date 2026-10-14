@@ -26,8 +26,8 @@
 # Each invocation is its own pytest session, so the deterministic pipeline
 # fixture (tests/e2e/conftest.py's `run`/`all_runs`, cached per sample at module
 # level to survive pytest's own fixture-teardown churn under multi-browser
-# parametrization) runs the two sample pipelines once each per invocation --
-# ~15s total (measured: wordpress ~6s, discourse ~9s) -- rather than once
+# parametrization) runs each sample pipeline once per invocation -- ~25s total
+# (measured: wordpress ~6s, discourse ~9s, trailgear ~10s) -- rather than once
 # overall across both invocations. An acceptable, explicit, now-correctly-sized
 # cost: this used to be mis-stated as "~13s each" and, before the fixture-cache
 # fix, was actually up to 13 reruns of one sample's pipeline per invocation.

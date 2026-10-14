@@ -11,7 +11,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-SAMPLES = {"wordpress": "wordpress", "discourse": "discourse"}
+# trailgear is the generated, synthetic SQL Server sample (scripts/generate_sqlserver_sample.py, #618):
+# the one heterogeneous source, so the only sample that reaches the Aurora engine choice.
+SAMPLES = {"wordpress": "wordpress", "discourse": "discourse", "trailgear": "trailgear"}
 
 
 @dataclass
@@ -87,7 +89,7 @@ def run_pipeline(sample: str, artifact_root: Path, job_id: str) -> PipelineResul
 def run_pipeline_from_file(src: Path, db: str, artifact_root: Path, job_id: str) -> PipelineResult:
     """Run the deterministic pipeline on an already-extracted ``collection.json``.
 
-    Shared by ``run_pipeline`` (the bundled wordpress/discourse zips) and
+    Shared by ``run_pipeline`` (the bundled sample zips) and
     ``tests/e2e/routing_snapshot.py``'s ``ROUTING_SNAPSHOT_EXTRA`` fixture — a
     local, never-committed collection for a sample not bundled in the repo
     (e.g. AdventureWorks).
