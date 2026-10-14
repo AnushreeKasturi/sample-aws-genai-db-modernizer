@@ -263,6 +263,32 @@ docstring for the confirmed stream-json shapes (aggregation across all
 `tests/unit/ci/fixtures/real-chat-wordpress-failed.jsonl` for a trimmed copy
 of that transcript.
 
+### `ci/llm/aggregate_notes.py`
+
+Finds the judge notes that keep coming back. The judge's scores are noisy
+(#513), but a note that repeats across runs is a steadier signal and usually
+worth an issue. It reads saved `judge.json` files (default
+`test-results/**/judge.json`; pass files, directories or globs to override),
+splits each note into sentences, and groups similar ones with a deterministic
+token similarity (every number becomes one `#` token, stopwords dropped,
+negations such as "not" kept and required to match, Jaccard at least
+`--threshold`, default 0.5). Sentences are sorted before grouping, so the
+result does not depend on input order or run names; paraphrases below the
+threshold do not merge, so counts are a lower bound. No model is called. It
+prints per-criterion score mean and spread, then the notes that recur in at
+least `--min-runs` distinct runs (default 3), with the runs they came from. A
+path argument that matches nothing is an error.
+
+```bash
+uv run python ci/llm/aggregate_notes.py                      # test-results/**/judge.json
+uv run python ci/llm/aggregate_notes.py runs/*/test-results --min-runs 5 --concerns-only
+uv run python ci/llm/aggregate_notes.py --json > recurring.json
+```
+
+`--concerns-only` is a lossy convenience: it keeps only sentences containing
+hedge or gap wording (could, soft, somewhat, repeats, ambiguous, generic, ...),
+so recurring praise does not drown them out. Run without it when in doubt.
+
 ## `../.claude/settings.ci.json`
 
 The permission allowlist for headless `claude -p "/modernize ..." --permission-mode
