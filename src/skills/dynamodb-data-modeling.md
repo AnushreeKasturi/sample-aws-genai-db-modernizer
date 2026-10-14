@@ -179,7 +179,7 @@ Detected by inspecting `query_text` (do not rely on `has_text_search` or `has_ag
 ### Temporal data
 
 - ISO 8601 strings for human-readable timestamps and natural lexicographic sort.
-- Numeric epoch (seconds) for TTL attributes and arithmetic. TTL expiry has up to 48-hour delay — never use it for security enforcement.
+- Numeric epoch (seconds) for TTL attributes and arithmetic. TTL deletes expired items in the background, typically within a few days of expiry, and expired items still appear in reads until then — never use it for security enforcement; filter on the expiry attribute when a read must not see expired items.
 
 ---
 

@@ -6,7 +6,15 @@ Informed by the Relational DB to MongoDB Migration Guide — DocumentDB Edition
 and validated against real-world customer PoC results (March 2026).
 
 Key insight: DocumentDB should denormalize more aggressively than native MongoDB
-because $lookup lacks correlated subqueries, and $ne/$nin cause full scans.
+because every $lookup is a read-time join (correlated $lookup with let/pipeline
+needs 8.0.2+ on an instance-based cluster), and $ne/$nin cause full scans.
+
+Version facts (AWS DocumentDB supported-APIs page): $graphLookup (8.0),
+$facet (8.0.2+), $setWindowFields with the rank operators (8.0.2+),
+$stdDevPop/$stdDevSamp (8.0.1+) and correlated $lookup (8.0.2+) run only on
+8.0 instance-based clusters, not on 5.0 or earlier or on elastic clusters.
+The anti-patterns below keep their detection and weights: whether a design
+may assume 8.0 is a routing decision for the rule catalog (#489).
 """
 
 from src.tools.analysis.pattern_catalog_base import CatalogAntiPattern, CatalogPattern
@@ -79,9 +87,9 @@ DOCUMENTDB_PATTERNS: list[CatalogPattern] = [
         ),
         base_score=75,
         concerns=[
-            "$stdDevPop/$stdDevSamp not supported — compute in application layer",
-            "$facet not supported — run multiple pipelines in parallel instead",
-            "$setWindowFields not supported — use Computed Pattern or application layer",
+            "$stdDevPop/$stdDevSamp need DocumentDB 8.0.1+ — otherwise compute in application layer",
+            "$facet needs DocumentDB 8.0.2+ — otherwise run multiple pipelines in parallel",
+            "$setWindowFields needs DocumentDB 8.0.2+ — otherwise use Computed Pattern or application layer",
         ],
     ),
     # Signals: json/jsonb columns, high column count with many nullable
@@ -104,7 +112,7 @@ DOCUMENTDB_PATTERNS: list[CatalogPattern] = [
         description=(  # nosemgrep: string-concat-in-list
             "Queries joining large transactional tables with small reference/lookup tables "
             "(country, merchant, payment_type) just to get display names. Embed the few referenced "
-            "fields directly — especially valuable in DocumentDB where $lookup lacks correlated subqueries."
+            "fields directly — especially valuable in DocumentDB, where every $lookup is a read-time join."
         ),
         base_score=85,
         concerns=[
@@ -134,8 +142,8 @@ DOCUMENTDB_ANTI_PATTERNS: list[CatalogAntiPattern] = [
         pattern_id="documentdb-anti-01",
         pattern_type="heavy-cross-collection-joins",
         description=(  # nosemgrep: string-concat-in-list
-            "Queries joining 3+ tables at high frequency. DocumentDB $lookup only supports "
-            "simple equality (no correlated subqueries). Real-world: 4-7 table JOINs caused 72% I/O wait."
+            "Queries joining 3+ tables at high frequency. Each join becomes a $lookup stage "
+            "(correlated $lookup needs DocumentDB 8.0.2+). Real-world: 4-7 table JOINs caused 72% I/O wait."
         ),
         severity_weight=0.6,
         guidance=(  # nosemgrep: string-concat-in-list
@@ -164,8 +172,8 @@ DOCUMENTDB_ANTI_PATTERNS: list[CatalogAntiPattern] = [
         pattern_id="documentdb-anti-04",
         pattern_type="graph-traversal-hierarchy",
         description=(  # nosemgrep: string-concat-in-list
-            "Self-referential FKs or recursive queries. $graphLookup is NOT supported in "
-            "any DocumentDB version (including 8.0)."
+            "Self-referential FKs or recursive queries. $graphLookup needs DocumentDB 8.0 "
+            "on an instance-based cluster (not 5.0 or earlier, not elastic clusters)."
         ),
         severity_weight=0.8,
         guidance=(  # nosemgrep: string-concat-in-list
@@ -189,8 +197,8 @@ DOCUMENTDB_ANTI_PATTERNS: list[CatalogAntiPattern] = [
         pattern_id="documentdb-anti-06",
         pattern_type="faceted-analytics",
         description=(  # nosemgrep: string-concat-in-list
-            "Multi-dimensional analytics queries. $facet is NOT supported in any "
-            "DocumentDB version."
+            "Multi-dimensional analytics queries. $facet needs DocumentDB 8.0.2+ "
+            "on an instance-based cluster (not 5.0 or earlier, not elastic clusters)."
         ),
         severity_weight=0.5,
         guidance="Run multiple aggregation pipelines in parallel at application layer.",
@@ -201,7 +209,8 @@ DOCUMENTDB_ANTI_PATTERNS: list[CatalogAntiPattern] = [
         pattern_type="window-functions",
         description=(  # nosemgrep: string-concat-in-list
             "SQL window functions (ROW_NUMBER, RANK, running totals). $setWindowFields "
-            "is NOT supported in any DocumentDB version."
+            "needs DocumentDB 8.0.2+ on an instance-based cluster; LAG/LEAD ($shift) is "
+            "not supported on any version."
         ),
         severity_weight=0.5,
         guidance="Use Computed Pattern (pre-calculated fields) or application-layer computation.",
@@ -211,8 +220,8 @@ DOCUMENTDB_ANTI_PATTERNS: list[CatalogAntiPattern] = [
         pattern_id="documentdb-anti-08",
         pattern_type="correlated-subquery-joins",
         description=(  # nosemgrep: string-concat-in-list
-            "Queries with correlated subqueries. DocumentDB $lookup does NOT support "
-            "let/pipeline syntax for correlated joins. Must be pre-denormalized."
+            "Queries with correlated subqueries. Correlated $lookup (let/pipeline) needs "
+            "DocumentDB 8.0.2+ on an instance-based cluster; otherwise pre-denormalize."
         ),
         severity_weight=0.7,
         guidance=(  # nosemgrep: string-concat-in-list
