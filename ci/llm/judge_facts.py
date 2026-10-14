@@ -7,7 +7,10 @@ The judge used to see the first 8,000 characters of ``report.json`` (about
 rubric criteria are checked against, as one compact JSON-serialisable dict:
 
 * ``totals`` -- headline counts (tables, queries, risks), architecture type,
-  overall risk.
+  overall risk, and the sums the deliverables print: target objects, in-scope
+  and out-of-scope access patterns (designed engines only), query groups (all, and the
+  non-relational ones the Engineering Report heading counts), open and resolved risks,
+  wave count (#646).
 * ``engines`` -- per selected engine: workload, confidence (the routed fit the
   deliverables show, #152; ``analysis_confidence`` is the all-tables average), monthly cost,
   schema counts, assignment reasons, the tables its assigned queries touch
@@ -49,6 +52,8 @@ MIGRATION_WAVES_ABSENT = (
     "not in report.json; read the waves from the executive summary PDF's "
     "Migration Sequencing slide"
 )
+
+_RELATIONAL_ENGINES = {"aurora", "aurora_mysql", "aurora_postgresql"}
 
 _ENGINE_PREFIX_RE = re.compile(r"^\[([a-z0-9_]+)\]\s*")
 
@@ -157,6 +162,67 @@ def _tables_served(
     if partial_scope and isinstance(assigned_queries, int) and assigned_queries > 0:
         return None
     return tables or []
+
+
+def _designed_targets(ranking: list[dict[str, Any]]) -> set[str]:
+    """Engines the deliverables count in their schema-design totals.
+
+    Same definition as ``synthesis_report.designed_and_not_designed_engines``: an
+    entry that records ``assigned_queries`` needs workload (assigned queries or a
+    cache overlay), and every entry needs a schema design. The totals the PDF and the
+    summary print ("N target objects", "M in-scope access patterns") are over these
+    engines only.
+    """
+    out: set[str] = set()
+    for entry in ranking:
+        if "assigned_queries" in entry and not (
+            (entry.get("assigned_queries") or 0) > 0
+            or (entry.get("cache_overlay_queries") or 0) > 0
+        ):
+            continue
+        if entry.get("schema_design_available") and entry.get("target"):
+            out.add(str(entry["target"]))
+    return out
+
+
+def _access_pattern_totals(report: dict[str, Any], engines: set[str]) -> tuple[int, int] | None:
+    """``(in_scope, out_of_scope)`` access patterns of ``engines`` across ``query_groups``.
+
+    A pattern is one ``(engine, pattern_id)`` however many groups list it, and counts as
+    in scope when any listing says so (``renderers.access_pattern_scope``). ``None``
+    when the report has no query groups, so the judge reads "unknown" rather than 0.
+    """
+    groups = report.get("query_groups")
+    if not isinstance(groups, list):
+        return None
+    seen: dict[tuple[str, str], bool] = {}
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        for ap in group.get("access_patterns") or []:
+            if isinstance(ap, dict) and ap.get("engine") in engines and ap.get("pattern_id"):
+                key = (str(ap["engine"]), str(ap["pattern_id"]))
+                seen[key] = seen.get(key, False) or ap.get("in_scope", True) is not False
+    n_in = sum(1 for in_scope in seen.values() if in_scope)
+    return n_in, len(seen) - n_in
+
+
+def _has_content(description: Any) -> bool:
+    """A risk with text after its ``[engine]`` tag (``renderers._risk_has_content``);
+    the deliverables count only these."""
+    text = str(description or "").strip()
+    if text.startswith("[") and "]" in text:
+        text = text[text.index("]") + 1 :].strip()
+    if text.lower().startswith("unknown:"):
+        text = text[len("unknown:") :].strip()
+    return bool(text)
+
+
+def _counted_risks(value: Any) -> int | None:
+    """Count of the risks the deliverables count; ``None`` when the report has no list."""
+    if not isinstance(value, list):
+        return None
+    return sum(1 for r in value if isinstance(r, dict) and _has_content(r.get("description")))
 
 
 def _eliminated_engines(
@@ -318,6 +384,14 @@ def build_facts(
     )
     rc = report.get("reality_check") or {}
     waves = report.get("migration_waves")
+    designed = _designed_targets(ranking)
+    ap_totals = _access_pattern_totals(report, designed) if designed else None
+    target_counts = [
+        r.get("target_tables")
+        for r in ranking
+        if r.get("target") in designed and r.get("target_tables") is not None
+    ]
+    query_groups = report.get("query_groups")
     overlay = report.get("cache_overlay") or {}
 
     return {
@@ -340,6 +414,28 @@ def build_facts(
             "queries": summary.get("query_count"),
             "queries_in_scope": summary.get("in_scope_count"),
             "co_dependency_groups": summary.get("co_dependency_groups"),
+            # Totals the deliverables print (#646), over the same engines and entries
+            # they count: the schema-design sums cover designed engines only; risk
+            # counts skip contentless entries; null means the report does not say.
+            "target_objects": sum(target_counts) if target_counts else None,
+            "in_scope_access_patterns": ap_totals[0] if ap_totals else None,
+            "out_of_scope_access_patterns": ap_totals[1] if ap_totals else None,
+            "query_groups": len(query_groups) if isinstance(query_groups, list) else None,
+            # The Engineering Report heading "Query groups (N)" leaves out groups served
+            # only by Aurora engines (listed per table elsewhere in that report).
+            "query_groups_non_relational": (
+                sum(
+                    1
+                    for g in query_groups
+                    if isinstance(g, dict)
+                    and not set(g.get("engines") or []).issubset(_RELATIONAL_ENGINES)
+                )
+                if isinstance(query_groups, list)
+                else None
+            ),
+            "open_risks": _counted_risks(risk_assessment.get("risks")),
+            "resolved_risks": _counted_risks(risk_assessment.get("resolved_risks")),
+            "migration_wave_count": len(waves) if isinstance(waves, list) and waves else None,
             "overall_risk": risk_assessment.get("overall_risk_level"),
             "risks_by_severity": dict(severity_counts),
             "projected_monthly_cost_usd": tco.get("projected_monthly_cost"),
