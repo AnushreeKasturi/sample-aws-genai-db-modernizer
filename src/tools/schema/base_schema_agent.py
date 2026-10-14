@@ -219,7 +219,7 @@ class SchemaDesignRunner:
             input_summary = {}
 
         if self._invoke_pe_reviewer is None:
-            return design_output, self.trace.to_dict()
+            return design_output, self._trace_dict()
 
         # --- PE review loop ---
         previous_change_keys: set[str] = set()
@@ -337,7 +337,19 @@ class SchemaDesignRunner:
             self.trace.log_designer(iteration + 1, elapsed, design_output)
             print(f"{prefix} Designer revision {iteration + 2} complete in {elapsed:.0f}s")
 
-        return design_output, self.trace.to_dict()
+        return design_output, self._trace_dict()
+
+    def _trace_dict(self) -> dict:
+        """The design trace, with the model's token usage over the run when it has one.
+
+        ``token_usage`` covers every designer and PE call on ``self.model``
+        (#626): input, output, cache-read and cache-write tokens, and calls.
+        """
+        trace = self.trace.to_dict()
+        usage = getattr(self.model, "usage", None)
+        if isinstance(usage, dict):
+            trace["token_usage"] = dict(usage)
+        return trace
 
     def _invoke_designer(self, prompt: str, previous_output: T | None = None) -> T:
         """Invoke designer with retries and graceful fallback."""
