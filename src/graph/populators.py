@@ -42,7 +42,7 @@ def populate_from_collector(collector_output: dict, store: GraphStore) -> None:
     """Create Query and SourceTable nodes, READS_FROM edges from collector output."""
     patterns = collector_output["queries"]["query_patterns"]
 
-    table_rows = [{"id": t} for t in {t for p in patterns for t in p["tables_accessed"]}]
+    table_rows = [{"id": t} for t in sorted({t for p in patterns for t in p["tables_accessed"]})]
     if table_rows:
         store.execute(
             "UNWIND $rows AS r MERGE (st:SourceTable {id: r.id}) "

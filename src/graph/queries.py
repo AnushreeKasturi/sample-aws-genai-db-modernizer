@@ -262,7 +262,10 @@ def _journey_from_row(row: dict) -> dict:
     source = {
         "query_text": row.get("query_text"),
         "query_type": row.get("query_type"),
-        "tables_accessed": [t for t in (row.get("tables_accessed") or []) if t is not None],
+        # COLLECT(DISTINCT ...) has no defined order; sort by table name (#664).
+        # This is display order only: do not read tables_accessed[0] as the primary
+        # table (the collector's order drives primary-table grouping elsewhere).
+        "tables_accessed": sorted(t for t in (row.get("tables_accessed") or []) if t is not None),
         "frequency_per_hour": row.get("frequency_per_hour"),
         "calls_per_second": row.get("calls_per_second"),
         "performance": _decode(row.get("performance_json")),
