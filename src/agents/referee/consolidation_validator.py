@@ -72,15 +72,19 @@ ENGINE_CONTEXT: dict[str, str] = {
         "It struggles with: ad-hoc queries, multi-table JOINs (requires denormalization), "
         "full-text search (no LIKE '%...%'), complex aggregations across partitions, "
         "queries that scan large datasets without a known partition key, "
-        "transactions spanning many items (25 item limit)."
+        "transactions over 100 actions or 4 MB."
     ),
     "documentdb": (
         "DocumentDB is a document database (MongoDB-compatible). "
         "It excels at: flexible schemas, nested document queries, aggregation pipelines, "
-        "multi-document ACID transactions, $regex text matching (basic), JOINs via $lookup. "
-        "It struggles with: full-text search at scale (no inverted index), "
-        "extreme write throughput (single-leader architecture), "
-        "queries requiring horizontal scaling beyond a few TB."
+        "multi-document ACID transactions (one-minute limit), $regex text matching (basic), "
+        "JOINs via $lookup, basic English text indexes; on 8.0 instance-based clusters also "
+        "$graphLookup, $facet, $setWindowFields and correlated $lookup. "
+        "It struggles with: full-text search that needs fuzzy matching or language "
+        "analyzers (text indexes score by term frequency with field weights only, "
+        "English only, one per collection), write throughput beyond one writer instance "
+        "(instance-based clusters; elastic clusters shard writes but drop transactions "
+        "and most 8.0 operators)."
     ),
     "opensearch": (
         "OpenSearch is a search and analytics engine. "

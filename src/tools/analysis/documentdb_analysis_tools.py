@@ -48,6 +48,21 @@ _AGGREGATION_RE = re.compile(
     r"\b(group\s+by|having|count\s*\(|sum\s*\(|avg\s*\(|min\s*\(|max\s*\()\b", re.I
 )
 _WINDOW_FN_RE = re.compile(r"\b(row_number|rank|dense_rank|ntile|lag|lead|over\s*\()\b", re.I)
+# The window functions DocumentDB 8.0.2+ serves through $setWindowFields
+# (ROW_NUMBER/RANK/DENSE_RANK as $documentNumber/$rank/$denseRank, and
+# aggregates such as SUM(...) OVER for running totals), and the ones it has no
+# operator for on any version (LAG/LEAD need $shift; NTILE has none), per the
+# supported-APIs page.
+_SET_WINDOW_FIELDS_RE = re.compile(
+    r"\b(row_number|rank|dense_rank)\s*\(|\b(sum|avg|min|max|count)\s*\([^()]*\)\s*over\b",
+    re.I,
+)
+_UNSUPPORTED_WINDOW_FN_RE = re.compile(r"\b(lag|lead|ntile)\s*\(", re.I)
+
+# The DocumentDB version and cluster type the analysis (and the PE reviewer)
+# judge compatibility against.
+DOCUMENTDB_TARGET_VERSION = "8.0"
+DOCUMENTDB_TARGET_CLUSTER = "instance-based"
 _NEGATION_RE = re.compile(r"\b(not\s+in|not\s+exists|<>|!=)\b", re.I)
 _CORRELATED_SUB_RE = re.compile(
     r"\(\s*select\b.*?\bwhere\b.*?\b\w+\.\w+\s*=\s*\w+\.\w+", re.I | re.S
@@ -891,23 +906,42 @@ def build_decision_trace(
             "attempts": llm_attempts,
         },
         "documentdb_compatibility": {
-            "target_version": "8.0",
+            "target_version": DOCUMENTDB_TARGET_VERSION,
+            "cluster_type": DOCUMENTDB_TARGET_CLUSTER,
+            "version_dependent_features_detected": _detect_version_dependent_features(queries),
             "unsupported_features_detected": _detect_unsupported_features(queries),
         },
     }
 
 
-def _detect_unsupported_features(queries: list[dict]) -> list[str]:
-    """Detect SQL patterns that map to unsupported DocumentDB features."""
+def _detect_version_dependent_features(queries: list[dict]) -> list[str]:
+    """Detect SQL patterns whose DocumentDB operator needs a recent 8.0 release.
+
+    Each needs a DocumentDB 8.0 instance-based cluster (not 5.0 or earlier,
+    not elastic clusters), per the AWS DocumentDB supported-APIs page.
+    """
     features: set[str] = set()
     for q in queries:
         text = q.get("query_text", "")
-        if _WINDOW_FN_RE.search(text):
-            features.add("$setWindowFields (window functions)")
+        if _SET_WINDOW_FIELDS_RE.search(text):
+            features.add("$setWindowFields (ranking and window aggregates): needs 8.0.2+")
         if _RECURSIVE_RE.search(text):
-            features.add("$graphLookup (recursive/hierarchical queries)")
+            features.add("$graphLookup (recursive/hierarchical queries): needs 8.0")
         if _CORRELATED_SUB_RE.search(text):
-            features.add("$lookup with let/pipeline (correlated subqueries)")
+            features.add("$lookup with let/pipeline (correlated subqueries): needs 8.0.2+")
+    return sorted(features)
+
+
+def _detect_unsupported_features(queries: list[dict]) -> list[str]:
+    """Detect SQL patterns DocumentDB has no operator for on any version.
+
+    LAG/LEAD need ``$shift`` and NTILE has no equivalent; the supported-APIs
+    page lists neither on any version or cluster type.
+    """
+    features: set[str] = set()
+    for q in queries:
+        if _UNSUPPORTED_WINDOW_FN_RE.search(q.get("query_text", "")):
+            features.add("LAG/LEAD/NTILE (offset and bucketing window functions)")
     return sorted(features)
 
 

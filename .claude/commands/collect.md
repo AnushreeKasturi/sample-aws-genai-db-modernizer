@@ -1,7 +1,7 @@
 
 # /collect
 
-Parses raw collector output (MySQL/PostgreSQL/MariaDB offline collection) and initializes the modernization job.
+Parses raw collector output (MySQL, MariaDB, PostgreSQL, SQL Server or Oracle offline collection) and initializes the modernization job.
 
 ## Tool Use
 

@@ -62,12 +62,12 @@ Use these to judge whether a target engine can handle the moved queries:
 **DynamoDB** — Key-value/document store
 
 - CAN DO: single-item lookups by PK, range queries on sort key, denormalized data via GSI, key-value CRUD, session storage, metadata lookups
-- CANNOT DO: ad-hoc multi-table JOINs, full-text search (LIKE '%...%'), complex aggregations across partitions, transactions >25 items, queries without a known partition key
+- CANNOT DO: ad-hoc multi-table JOINs, full-text search (LIKE '%...%'), complex aggregations across partitions, transactions over 100 actions or 4 MB, queries without a known partition key
 
 **DocumentDB** — MongoDB-compatible document DB
 
-- CAN DO: flexible schemas, nested document queries, aggregation pipelines, $lookup JOINs, multi-document ACID, basic regex matching
-- CANNOT DO: full-text search at scale (no inverted index), extreme write throughput
+- CAN DO: flexible schemas, nested document queries, aggregation pipelines, `$lookup` JOINs, multi-document ACID transactions (one-minute limit), basic regex matching, basic English text indexes; on 8.0 instance-based clusters also `$graphLookup`, `$facet`, `$setWindowFields` and correlated `$lookup`
+- CANNOT DO: full-text search that needs fuzzy matching or language analyzers (text indexes score by term frequency with field weights only, English only, one per collection), write throughput beyond one writer instance (instance-based clusters; elastic clusters shard writes but drop transactions and most 8.0 operators)
 
 **OpenSearch** — Search and analytics engine
 
@@ -83,7 +83,7 @@ Use these to judge whether a target engine can handle the moved queries:
 **Aurora MySQL/PostgreSQL** — Relational database
 
 - CAN DO: multi-table JOINs, complex GROUP BY, subqueries (correlated, EXISTS), ACID transactions, ad-hoc queries, window functions
-- CANNOT DO: extreme horizontal scale beyond a few TB, single-digit-ms at millions of TPS for simple lookups
+- CANNOT DO: write throughput beyond one writer instance (Aurora PostgreSQL Limitless Database shards writes, a separate deployment model), storage beyond the cluster volume limit (128 TiB, or 256 TiB on recent versions), single-digit-ms at millions of TPS for simple lookups
 
 ### Flag Criteria
 

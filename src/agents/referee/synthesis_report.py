@@ -3276,7 +3276,7 @@ def generate_executive_summary(
         "using the specific AWS managed service (see AWS INTEGRATIONS below). "
         "This is what makes it a real architecture, not just a list of databases.\n\n"
         "SENTENCE 3-4: What changes for them.\n"
-        "The source database is relational (MySQL or PostgreSQL). The CTO's team "
+        "The source database is relational (MySQL, MariaDB, PostgreSQL, SQL Server or Oracle). The CTO's team "
         "is used to strong consistency, JOINs, GROUP BY, and ad-hoc queries. "
         "If the target architecture changes any of that, explain what is different "
         "and what it means IN PRACTICE. For example:\n"
