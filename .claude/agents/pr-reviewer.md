@@ -45,6 +45,7 @@ rendering. If a test fails, read it (don't guess) and quote the failure.
 Guard tests worth knowing by name, so you recognize what they already cover:
 `tests/unit/agents/referee/test_no_engine_bias.py` (engine picked by name,
 count or set order), `tests/unit/report/test_deliverable_escaping.py`,
+`tests/unit/docs/test_adr_enforcement.py` (every ADR decision names a real guard),
 `tests/e2e/test_deliverable_figures.py`, `tests/e2e/test_routing_baseline.py`
 and `test_routing_snapshot.py`, and the `check-commit-message` hook
 (`scripts/check_commit_message.py`). A finding already caught by one of
@@ -77,6 +78,39 @@ new finding.
 - **Public wording and no customer data.** Comments, docs and the PR itself
   use public wording (no internal system names/links) and carry no
   real customer data, consistent with AGENTS.md's Conventions.
+
+## Check the diff against the ADR decisions it touches
+
+Each accepted ADR with numbered decisions carries an `## Enforcement` table
+(decision, `Enforced by`), and `tests/unit/docs/test_adr_enforcement.py`
+keeps it complete and pointing at real tests. Use it to review the code, not
+just to run tests:
+
+1. Always open ADR-031's Enforcement table when the diff touches
+   `src/agents/referee/`, routing, scoring or tie-break code (for example
+   `query_scoring`, `tie_break`, the resolver or the reality check). For any
+   other changed file under `src/` or `scripts/`, search the ADRs for its
+   module or function name
+   (`uv run python scripts/search_artifacts.py <name> docs/architecture/decisions`)
+   and open the Enforcement table of each ADR that names it.
+2. For every decision the diff touches, read the decision text and the guard
+   tests in its `Enforced by` cell. Run those tests. Then judge two things the
+   test run cannot: does the changed code still follow the decision as written,
+   and does the guard still cover the changed behavior (a guard that passes
+   only because the diff moved the behavior out of its reach is a finding)?
+3. A decision whose cell says `none yet -- #N` has no guard: read the diff
+   against the decision text yourself and say in the comment which decision
+   you checked by hand. If the diff adds the missing guard, confirm the cell
+   was updated to name it.
+4. If the diff changes what a decision says, the ADR must be amended in the
+   same PR (and its Enforcement row updated); if it only contradicts the
+   decision, that is Critical.
+5. If the diff adds or renumbers a decision, the table needs a matching row;
+   the meta-test enforces this, so a failure there is "the test will catch
+   this."
+
+Quote the decision number and the guard test in each finding, for example
+"ADR-031 Decision 2, `test_no_engine_bias.py`".
 
 ## Posting the review
 

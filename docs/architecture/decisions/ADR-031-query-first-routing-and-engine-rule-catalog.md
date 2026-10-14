@@ -103,6 +103,26 @@ The rule applies only when the source-compatible engine scores at least as well 
 
 A heterogeneous source (SQL Server, Oracle, DB2) has no source-compatible engine, so this rule does not apply to it; the one relational engine Decision 6 chooses for it gets no protection from standing cost under this decision.
 
+## Enforcement
+
+Each decision names the guard test that fails when the code stops following it. `tests/unit/docs/test_adr_enforcement.py` fails when a decision has no row here, or when a row names a test file, class or function that does not exist. A decision with no guard yet says `none yet` and the issue that will add one; it is never left blank.
+
+| Decision | Enforced by |
+|---|---|
+| 1. The query is the unit of assignment | `tests/unit/test_assignment_resolver.py::TestOpenSearchScoresTheQueryNotTheTable`<br>`tests/unit/test_assignment_resolver.py::TestComputeQueryConfidence::test_pattern_match_on_a_table_outside_the_querys_own_tables_has_no_effect`<br>`tests/unit/agents/referee/test_migration_waves.py::TestQueryScopedTables` |
+| 2. A query's engine is decided in a fixed order | `tests/unit/agents/referee/test_no_engine_bias.py`<br>`tests/unit/agents/referee/test_tie_break.py::TestSourceCompatibleWinsAnAuroraTie`<br>`tests/unit/agents/referee/test_resolver_reality_check_agreement.py`<br>`tests/unit/test_assignment_resolver.py::TestHardCapabilityGateAtInitialAssignment`<br>`tests/unit/test_assignment_resolver.py::TestOpenSearchNeverOwnsAWrite`<br>`tests/unit/agents/referee/test_tie_break.py::TestStabilityWinsANonAuroraTieWithOneCurrentEngine`<br>`tests/unit/agents/referee/test_tie_break.py::TestTwoTiedCurrentEnginesAreUnresolved` |
+| 3. DynamoDB supports ACID transactions; the score reflects shape | none yet -- #493 |
+| 4. Co-dependency groups move as one unit | `tests/unit/test_reality_check.py::TestJustificationFloorMovesACoDependencyGroupTogether`<br>`tests/unit/test_reality_check.py::TestGroupMembersOnTwoTiedEnginesIsUnresolvedNotStability`<br>`tests/unit/test_assignment_resolver.py::TestCoDependencyGroupTieHashSeedIsOrderIndependent`<br>`tests/unit/test_assignment_overrides.py::TestCoDependencyPropagation` |
+| 5. Cost is one of four weighted score dimensions | none yet -- #638 |
+| 6. Heterogeneous sources pick exactly one Aurora engine | `tests/unit/agents/referee/test_aurora_choice.py::TestChooseHeterogeneousEngine`<br>`tests/unit/agents/referee/test_assignment_resolver_heterogeneous_aurora.py` |
+| 7. The reality check is the CTO consolidation review, routed by the same scores | `tests/unit/agents/referee/test_reality_check_resettle.py`<br>`tests/unit/agents/referee/test_resolver_reality_check_agreement.py`<br>none yet -- #648 (mandatory-engine tie bonus, before/after reporting, savings claims) |
+| 8. Rules are a pattern-first, engine-neutral catalog | none yet -- #639 |
+| 9. Neptune and Keyspaces are future placeholders | none yet -- #640 |
+| 10. Every routing change reports its per-query effect (these guards run under `make e2e`, not `make test`) | `tests/e2e/test_routing_snapshot.py`<br>`tests/e2e/test_routing_baseline.py` |
+| 11. Models explain; they do not decide | `tests/unit/agents/referee/test_reality_check_sweep_parity.py`<br>`tests/e2e/test_hashseed_determinism.py`<br>none yet -- #647 (a model never decides or changes an assignment; conflicts with LLM corrections) |
+| 12. A still-unresolved tie gets a placeholder | `tests/unit/agents/referee/test_tie_break.py::TestPickUnresolvedTiePlaceholder`<br>`tests/unit/agents/referee/test_tie_break.py::TestSettledCounts` |
+| 13. The source-compatible engine is not removed on cost for a no-better engine | `tests/unit/agents/referee/test_source_compatible_tie_survival.py`<br>`tests/unit/agents/referee/test_tie_break.py::TestCheaperEngineDisplacesSourceCompatible` |
+
 ## What this ADR supersedes
 
 - **ADR-017** — the per-query scoring unit (section 1) and configurable weights per target (section 4) stand; its model of specialist-curated, per-engine pattern catalogs with independent detection code is superseded by Decision 8's single, engine-neutral catalog and detector.
