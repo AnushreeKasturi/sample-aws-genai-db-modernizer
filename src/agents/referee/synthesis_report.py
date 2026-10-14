@@ -48,6 +48,7 @@ from src.shared.unsupported_pattern import (
     unsupported_pattern_mitigation,
     unsupported_pattern_text,
 )
+from src.tools.analysis.aurora_common_pattern_catalog import NO_RELATIONAL_NEED_ENGINE_HINT
 
 if TYPE_CHECKING:
     from src.agents.referee.synthesis_data import SynthesisData
@@ -1178,7 +1179,7 @@ def build_risk_assessment(
                         continue
                     # Partially resolved — note which queries are still uncovered
                     uncovered = ids - covered
-                    text = description
+                    text = _without_hedge(description)
                     if uncovered and ids:
                         pct_covered = round((1 - len(uncovered) / len(ids)) * 100)
                         text += (
@@ -1278,7 +1279,7 @@ def build_risk_assessment(
                         _resolved_risk(
                             engine,
                             severity,
-                            description,
+                            _moved_description(description, target),
                             tables,
                             ids,
                             target,
@@ -1301,7 +1302,7 @@ def build_risk_assessment(
                         _resolved_risk(
                             engine,
                             severity,
-                            description,
+                            _moved_description(description, target),
                             tables,
                             ids,
                             target,
@@ -1337,7 +1338,7 @@ def build_risk_assessment(
                         "description": (
                             f"[{target}] Flagged by the {display_name(engine)} analysis for "
                             f"{n_ids} {'query' if n_ids == 1 else 'queries'} now on "
-                            f"{display_name(target)}: {description} ({pct_covered}% of "
+                            f"{display_name(target)}: {_without_hedge(description)} ({pct_covered}% of "
                             f"queries resolved by schema design, {n_rem} remaining)"
                         ),
                         "affected_tables": tables,
@@ -2081,6 +2082,26 @@ def _design_conflict_risks(
     return risk_id, risks
 
 
+def _without_hedge(description: str) -> str:
+    """``description`` without the catalog's engine-hint sentence (#649).
+
+    ``NO_RELATIONAL_NEED_ENGINE_HINT`` ("...could run on a simpler, purpose-built engine
+    (DynamoDB..., ElastiCache...)") is the analysis finding's advice with a fixed engine
+    list; in the report it contradicts the engine a risk is attributed to (a risk now on
+    DocumentDB suggesting DynamoDB or ElastiCache) and, once resolved, hedges a decision
+    already made. The analysis output and the catalog keep it.
+    """
+    sentences = re.split(r"(?<=[.!?])\s+", description.strip())
+    kept = [x for x in sentences if NO_RELATIONAL_NEED_ENGINE_HINT not in x]
+    return " ".join(kept) if kept else description
+
+
+def _moved_description(description: str, target: str) -> str:
+    """Resolved-item text for queries the assignment moved to ``target``: the decision,
+    then the finding's factual sentences."""
+    return f"Moved to {display_name(target)}: {_without_hedge(description)}"
+
+
 def _resolved_risk(
     engine: str,
     severity: str,
@@ -2093,7 +2114,7 @@ def _resolved_risk(
     return {
         "engine": engine,
         "severity": severity,
-        "description": f"[{engine}] {description}",
+        "description": f"[{engine}] {_without_hedge(description)}",
         "affected_tables": tables,
         "query_ids": sorted(query_ids),
         "resolved_on": resolved_on,
