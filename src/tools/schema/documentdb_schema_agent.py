@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from enum import Enum
 from pathlib import Path
 
@@ -30,6 +31,10 @@ from src.contracts.collector_output import CollectorOutputContract
 from src.contracts.documentdb_model_output import DocumentDBModelOutputContract
 from src.contracts.schema_design_input import project_schema_design_input
 from src.shared.models import Role, build_bedrock_model
+from src.tools.analysis.documentdb_analysis_tools import (
+    DOCUMENTDB_TARGET_CLUSTER,
+    DOCUMENTDB_TARGET_VERSION,
+)
 from src.tools.schema.base_schema_agent import SchemaDesignRunner
 
 logger = logging.getLogger(__name__)
@@ -261,6 +266,28 @@ def _compact_agent_input(agent_input: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
+_ENGINE_VERSION_RE = re.compile(r"\d+\.\d+(\.\d+)?")
+_CLUSTER_TYPES = frozenset({"instance-based", "elastic"})
+
+
+def target_engine_label(decision_trace: dict | None) -> str:
+    """The DocumentDB version and cluster type the PE reviewer judges against.
+
+    Taken from the analysis trace's ``documentdb_compatibility`` (the same
+    target the designer reads). The label goes into trusted prompt text, so both values pass an allowlist
+    first; anything else (an edited or corrupted trace) falls back to the
+    analysis defaults.
+    """
+    compat = (decision_trace or {}).get("documentdb_compatibility") or {}
+    version = str(compat.get("target_version") or "")
+    if not _ENGINE_VERSION_RE.fullmatch(version):
+        version = DOCUMENTDB_TARGET_VERSION
+    cluster = compat.get("cluster_type")
+    if cluster not in _CLUSTER_TYPES:
+        cluster = DOCUMENTDB_TARGET_CLUSTER
+    return f"Amazon DocumentDB {version}+, {cluster} cluster"
+
+
 def _invoke_pe_reviewer(
     model: BedrockModel,
     design_output: DocumentDBModelOutputContract,
@@ -287,6 +314,9 @@ def _invoke_pe_reviewer(
         + f"Collections: {len(design_output.collections)}, "
         + f"Access patterns: {len(design_output.access_patterns)}, "
         + f"Tables: {agent_input_summary.get('table_count', 0)}\n\n"
+        + "## Target engine\n"
+        + agent_input_summary.get("target_engine", target_engine_label(None))
+        + "\n\n"
         + "## Design Output\n"
         + frame_untrusted(
             json.dumps(design_json, indent=2, default=str),
@@ -417,6 +447,7 @@ def run_documentdb_schema_agent(
         "aggregate_count": len(
             agent_input.get("analysis", {}).get("aggregate_recommendations") or []
         ),
+        "target_engine": target_engine_label(agent_input.get("decision_trace")),
     }
 
     runner = SchemaDesignRunner(

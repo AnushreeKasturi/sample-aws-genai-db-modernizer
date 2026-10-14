@@ -13,7 +13,7 @@ The projected input is provided inline in the user prompt as JSON containing:
   - `embedding_candidates`: per-FK analysis with co_access_ratio, avg_children_per_parent, exceeds_16mb, relationship_type
   - `denormalization_strategies`: embed/reference/hybrid decision per FK relationship
   - `polymorphic_tables`: tables with >30% nullable columns or type discriminators
-  - `documentdb_compatibility`: unsupported features detected in query patterns
+  - `documentdb_compatibility`: the target version and cluster type (`target_version`, `cluster_type`), query features that need DocumentDB 8.0 or 8.0.2+ (`version_dependent_features_detected`), and features with no operator on any version (`unsupported_features_detected`, e.g. LAG/LEAD/NTILE)
   - `relationships`: full FK relationship graph
   - `table_groups`: FK-connected table clusters
 
@@ -99,7 +99,7 @@ For each source query pattern, produce a DocumentDB access pattern:
 - Simple PK lookup → `findOne({_id: value})`
 - Filter + sort → `find({field: value}).sort({field: 1})`
 - JOINs where child is embedded → single `findOne` or `find` on parent collection
-- JOINs where child is referenced → `$lookup` in aggregation pipeline (note: `$lookup` only supports simple equality, NO correlated subqueries with `let`/`pipeline`)
+- JOINs where child is referenced → `$lookup` in aggregation pipeline. An equality `$lookup` (`localField`/`foreignField`) runs on every version; a correlated `$lookup` with `let`/`pipeline` needs DocumentDB 8.0.2+ (instance-based clusters only)
 
 ### Write Patterns
 
@@ -114,15 +114,15 @@ For each source query pattern, produce a DocumentDB access pattern:
 - JOIN + aggregate → `$lookup` + `$unwind` + `$group`
 - Write-time aggregation patterns: note that pre-computing at write time via Change Streams is preferred over runtime `$group`
 
-### Unsupported Patterns
+### Version-Dependent Patterns
 
-Flag and provide workarounds for:
+These operators exist only on DocumentDB 8.0 instance-based clusters: not on 5.0 or earlier, and not on elastic clusters. When a design uses one, record the minimum engine version it needs as a `TradeOff` (for example "needs DocumentDB 8.0.2+ for `$setWindowFields`"), and prefer the version-independent workaround when it costs about the same:
 
-- Window functions (ROW_NUMBER, RANK, LAG/LEAD) → application-layer computation
-- `$graphLookup` (recursive/hierarchical queries) → application-layer traversal or Neptune
-- `$facet` (multi-dimensional aggregation) → multiple separate aggregation queries
-- Correlated subqueries → pre-denormalize at write time
-- `$stdDevPop`/`$stdDevSamp` → application-layer computation
+- Window functions: `$setWindowFields` with `$rank`, `$denseRank`, `$documentNumber` needs 8.0.2+. Offset functions (LAG/LEAD, `$shift`) are not supported on any version → Computed Pattern or application-layer computation
+- Recursive/hierarchical queries: `$graphLookup` needs 8.0 → otherwise Materialized Path, pre-flattened hierarchy, or application-layer traversal
+- Multi-dimensional aggregation: `$facet` needs 8.0.2+ → otherwise multiple separate aggregation queries
+- Correlated subqueries: `$lookup` with `let`/`pipeline` needs 8.0.2+ → otherwise pre-denormalize at write time
+- `$stdDevPop`/`$stdDevSamp` need 8.0.1+ → otherwise application-layer computation
 
 ## Phase 5: Validation
 
@@ -201,7 +201,7 @@ Translate the design into `DocumentDBModelOutputContract` (defined in `documentd
 }
 ```
 
-Every trade-off must trace back to specific tables and queries. Common trade-offs: embed vs reference decisions, unbounded array growth, denormalization of lookup tables, loss of multi-document ACID, aggregation pipeline limitations, stored procedures needing app-layer replacement.
+Every trade-off must trace back to specific tables and queries. Common trade-offs: embed vs reference decisions, unbounded array growth, denormalization of lookup tables, multi-document transactions (supported on 4.0+ instance-based clusters, each limited to one minute; not on elastic clusters), aggregation pipeline limitations, stored procedures needing app-layer replacement.
 
 `validation_passed` — `true` only if all Phase 5 checks pass.
 

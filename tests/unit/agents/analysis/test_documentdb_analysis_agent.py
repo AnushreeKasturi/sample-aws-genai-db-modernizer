@@ -123,9 +123,10 @@ class TestDecisionTrace:
     def test_trace_has_compatibility_section(self):
         _, _, _, trace = _run(get_graph_hierarchy_fixture())
         assert "documentdb_compatibility" in trace
-        assert trace["documentdb_compatibility"]["target_version"] == "8.0"
-        unsupported = trace["documentdb_compatibility"]["unsupported_features_detected"]
-        assert any("graphLookup" in f for f in unsupported)
+        assert trace["documentdb_compatibility"]["target_version"] == "8.0.2"
+        needs_8_0 = trace["documentdb_compatibility"]["version_dependent_features_detected"]
+        assert "$graphLookup (recursive/hierarchical queries): needs 8.0" in needs_8_0
+        assert trace["documentdb_compatibility"]["cluster_type"] == "instance-based"
 
     def test_trace_summary_counts(self):
         _, _, _, trace = _run(get_content_management_fixture())

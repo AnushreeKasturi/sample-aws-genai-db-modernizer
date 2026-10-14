@@ -32,9 +32,10 @@ You are a Principal Engineer reviewing a DocumentDB schema design produced by an
 
 ### 5. DocumentDB Compatibility
 
-- Any use of `$graphLookup` → REJECT (not supported in any version)
-- Any use of `$facet` → REJECT (not supported)
-- Any use of `$setWindowFields` → REJECT (not supported)
+Judge compatibility against the target DocumentDB version and cluster type stated in the review prompt ("Target engine", for example "Amazon DocumentDB 8.0.2+, instance-based cluster": that patch level or later). An operator is available when the target's version is at least the operator's minimum below (8.0.2 is at least 8.0.1 and 8.0). Do not assume a different version.
+
+- Version-dependent operators: `$graphLookup` (8.0+), `$facet` (8.0.2+), `$setWindowFields` with `$rank`/`$denseRank`/`$documentNumber` (8.0.2+), `$stdDevPop`/`$stdDevSamp` (8.0.1+) and correlated `$lookup` with `let`/`pipeline` (8.0.2+) run only on DocumentDB 8.0 instance-based clusters, not on 5.0 or earlier or on elastic clusters. When the target supports the operator, using it is allowed, and using it without a `TradeOff` that states the minimum engine version → REQUEST CHANGE (category `compatibility`). When the target does not support it → REJECT
+- Offset and bucketing window functions (LAG/LEAD need `$shift`; NTILE has no operator), `$densify`, `$fill` and `$unionWith` → REJECT (not supported on any version)
 - Negation operators (`$ne`, `$nin`) on indexed fields → flag (causes full scan)
 - Wildcard indexes (`$**`) → REJECT (not supported)
 
@@ -59,14 +60,14 @@ You are a Principal Engineer reviewing a DocumentDB schema design produced by an
    - If YES → issue `CHANGES_REQUESTED` with category `scope_challenge`
 
 3. **Is this genuinely impossible for DocumentDB?**
-   - Graph traversal with variable depth (no `$graphLookup`)
-   - Window functions (ROW_NUMBER, RANK, LAG/LEAD)
-   - Full-text search with relevance scoring
+   - Offset or bucketing window functions (LAG/LEAD, NTILE): no operator on any version
+   - An operator the target version does not support (see section 5): for example graph traversal (`$graphLookup`) or ranking (`$setWindowFields`) when the target is not an 8.0 instance-based cluster
+   - Full-text search that needs to exclude a term, index array (multi-key) fields, or a language other than English (DocumentDB text indexes support none of these; they score by term frequency with field weights, one per collection)
    - Complex OLAP with CUBE/ROLLUP
    - If YES → **confirm as a routing recommendation** in `pe_notes`:
 
      ```
-     [ROUTING] query_ids=[q-42,q-55] → opensearch | reason: full-text search with relevance scoring
+     [ROUTING] query_ids=[q-42,q-55] → opensearch | reason: full-text search excluding terms
      ```
 
 **Rules for scope challenge:**
@@ -74,7 +75,7 @@ You are a Principal Engineer reviewing a DocumentDB schema design produced by an
 - Simple aggregations (COUNT, SUM, AVG) → ALWAYS challengeable via `$merge` or Change Streams
 - Multi-collection JOINs that are read-heavy → challengeable via denormalization or `$lookup`
 - Text search with LIKE → genuinely impossible, route to opensearch
-- Graph queries → genuinely impossible, declare terminal
+- Graph queries → servable with `$graphLookup` when the target version supports it (record the version as a trade-off); otherwise genuinely impossible, declare terminal
 
 ## Verdict
 
