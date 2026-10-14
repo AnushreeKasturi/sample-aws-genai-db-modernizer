@@ -2303,7 +2303,7 @@ class TestSettledEngineSetIsOrderIndependent:
         snapshot regardless of when it is checked. Forcing the opposite
         (reverse-alphabetical) evaluation order must settle on the exact
         same committed engine set and placement as the default order."""
-        import src.agents.referee.reality_check as reality_check
+        import src.agents.referee.reality_check_settle as reality_check_settle
 
         assignment, triage, collector, analysis = _make_small_engine_scenario()
         baseline = run_reality_check(assignment, triage, analysis, collector)
@@ -2311,12 +2311,16 @@ class TestSettledEngineSetIsOrderIndependent:
             qa["query_id"]: qa["assigned_engine"] for qa in baseline["revised_assignments"]
         }
 
-        monkeypatch.setattr(
-            reality_check,
-            "_round_evaluation_order",
-            lambda snapshot: sorted(snapshot, reverse=True),
-        )
+        calls: list[set[str]] = []
+
+        def reversed_order(snapshot: set[str]) -> list[str]:
+            calls.append(set(snapshot))
+            return sorted(snapshot, reverse=True)
+
+        monkeypatch.setattr(reality_check_settle, "_round_evaluation_order", reversed_order)
         reversed_result = run_reality_check(assignment, triage, analysis, collector)
+        # The patch must reach Phase 1; patching a re-export would silently do nothing.
+        assert calls, "_round_evaluation_order was never called through the patch"
         reversed_engine_of = {
             qa["query_id"]: qa["assigned_engine"] for qa in reversed_result["revised_assignments"]
         }

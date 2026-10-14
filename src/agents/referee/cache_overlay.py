@@ -12,7 +12,7 @@ at all, and OpenSearch -- a read model that indexes a durable owner's data, neve
 the only copy (#303, epic #340) -- owns reads but never a write. Both rules are
 enforced wherever :func:`can_own` gates an assignment: the resolver's v1 scoring,
 signal overrides and co-dependency groups, the reality check's consolidation
-(``reality_check.may_absorb``), and :class:`AssignmentValidator`'s hard-error
+(``reality_check_rules.may_absorb``), and :class:`AssignmentValidator`'s hard-error
 check on the final assignment, customer edits included.
 
 A query qualifies (:func:`cache_eligibility`) when every rule holds:

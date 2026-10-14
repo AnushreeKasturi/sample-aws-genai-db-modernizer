@@ -80,6 +80,7 @@ from __future__ import annotations
 
 import ast
 import re
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -155,7 +156,7 @@ _ALLOWLIST: dict[tuple[str, str, str], str] = {
         "among engines that could serve the query."
     ),
     (
-        "reality_check.py",
+        "reality_check_patterns.py",
         "_detect_architectural_patterns",
         RULE_MINMAX_COUNT_OR_NAME,
     ): (
@@ -190,7 +191,7 @@ _ALLOWLIST: dict[tuple[str, str, str], str] = {
         "message, not an engine -- display text only."
     ),
     (
-        "reality_check.py",
+        "reality_check_floors.py",
         "_suggest_lightweight_for_orphans",
         RULE_SET_ORDER,
     ): (
@@ -270,7 +271,7 @@ _ALLOWLIST: dict[tuple[str, str, str], str] = {
         "every query here was already assigned before this runs."
     ),
     (
-        "reality_check.py",
+        "reality_check_settle.py",
         "_settle_committed_engines",
         RULE_SORTED_INDEX0,
     ): (
@@ -281,7 +282,7 @@ _ALLOWLIST: dict[tuple[str, str, str], str] = {
         "own ranking comes from _removal_tiebreak_key's data, not name order."
     ),
     (
-        "reality_check.py",
+        "reality_check_rules.py",
         "_pick_winner",
         RULE_SORTED_INDEX0,
     ): (
@@ -290,7 +291,7 @@ _ALLOWLIST: dict[tuple[str, str, str], str] = {
         "every other caller."
     ),
     (
-        "reality_check.py",
+        "reality_check_settle.py",
         "_removal_tiebreak_key",
         RULE_SORTED_INDEX0,
     ): (
@@ -300,8 +301,8 @@ _ALLOWLIST: dict[tuple[str, str, str], str] = {
         "break_tie on the same line, same as _pick_winner above."
     ),
     (
-        "reality_check.py",
-        "run_reality_check",
+        "reality_check_floors.py",
+        "_apply_justification_floors",
         RULE_SORTED_INDEX0,
     ): (
         "tied_group[0] runs only after 'if len(tied_group) == 1' -- a real "
@@ -550,21 +551,26 @@ def _taint_set_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
     return tainted
 
 
-def _collect_sorted_returning_funcs(tree: ast.AST) -> frozenset[str]:
+def _collect_sorted_returning_funcs(
+    tree: ast.AST, imported: frozenset[str] = frozenset()
+) -> frozenset[str]:
     """Function names (anywhere in ``tree``) all of whose ``return <value>``
     statements return a bare ``sorted(...)`` call, or call another function
-    already found to be sorted-returning -- one level of same-module
-    propagation, e.g. ``tie_break._settled_workload_leaders``, whose own
-    ``return sorted(...)`` makes its CALLER's ``leaders = _settled_workload_
-    leaders(...)`` just as order-significant as writing ``sorted(...)``
-    inline would have been. Looked up by bare name (good enough within one
-    module; this scanner never resolves cross-module calls anywhere)."""
+    already found to be sorted-returning, e.g. ``tie_break._settled_workload_
+    leaders``, whose own ``return sorted(...)`` makes its CALLER's ``leaders =
+    _settled_workload_leaders(...)`` just as order-significant as writing
+    ``sorted(...)`` inline would have been. Looked up by bare name.
+
+    ``imported`` seeds the search with the sorted-returning helpers this
+    module imports from other referee modules
+    (``_imported_sorted_returning_funcs``), so a local wrapper around one of
+    them counts too, and the result includes them."""
     funcs: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             funcs[node.name] = node
 
-    sorted_returning: set[str] = set()
+    sorted_returning: set[str] = set(imported)
     for _ in range(4):
         changed = False
         for name, func in funcs.items():
@@ -807,13 +813,71 @@ def _qualify(stack: list[str]) -> str:
     return ".".join(stack)
 
 
+def _referee_module_source(module: str) -> str | None:
+    """Source of a ``src.agents.referee`` module, or None if there is no such file."""
+    path = _REPO_ROOT / Path(*module.split(".")).with_suffix(".py")
+    return path.read_text() if path.is_file() else None
+
+
+_REAL_MODULE_EXPORTS: dict[str, frozenset[str]] = {}
+
+
+def _module_sorted_returning_funcs(
+    module: str,
+    load: Callable[[str], str | None] = _referee_module_source,
+    memo: dict[str, frozenset[str]] | None = None,
+    visiting: frozenset[str] = frozenset(),
+) -> frozenset[str]:
+    """Sorted-returning names a referee ``module`` defines or re-exports,
+    following its own referee imports to any depth (#617: a helper chain split
+    across modules must stay as visible as it was inside one file). A module
+    already on the import chain being followed contributes nothing on the
+    repeat visit, so an import cycle terminates."""
+    if memo is None:
+        memo = _REAL_MODULE_EXPORTS if load is _referee_module_source else {}
+    if module in memo:
+        return memo[module]
+    if module in visiting:
+        return frozenset()
+    source = load(module)
+    if source is None:
+        result: frozenset[str] = frozenset()
+    else:
+        tree = ast.parse(source)
+        imported = _imported_sorted_returning_funcs(tree, load, memo, visiting | {module})
+        result = _collect_sorted_returning_funcs(tree, imported)
+    memo[module] = result
+    return result
+
+
+def _imported_sorted_returning_funcs(
+    tree: ast.AST,
+    load: Callable[[str], str | None] = _referee_module_source,
+    memo: dict[str, frozenset[str]] | None = None,
+    visiting: frozenset[str] = frozenset(),
+) -> frozenset[str]:
+    """Local names of sorted-returning helpers imported from another referee
+    module (``from src.agents.referee.reality_check_rules import _top_scorers``),
+    so a helper moving to a sibling module keeps its callers in scope."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(
+            "src.agents.referee."
+        ):
+            exported = _module_sorted_returning_funcs(node.module or "", load, memo, visiting)
+            names.update(a.asname or a.name for a in node.names if a.name in exported)
+    return frozenset(names)
+
+
 def _scan_module(path: Path) -> list[Finding]:
     """Every finding in ``path``, keyed to its innermost enclosing function
     (dotted through any enclosing class/function, e.g.
     ``TableNameResolver.resolve`` or ``check_summary_grounding.judge``)."""
     tree = ast.parse(path.read_text())
     file_name = path.name
-    sorted_returning_funcs = _collect_sorted_returning_funcs(tree)
+    sorted_returning_funcs = _collect_sorted_returning_funcs(
+        tree, _imported_sorted_returning_funcs(tree)
+    )
     findings: list[Finding] = []
 
     def visit(node: ast.AST, stack: list[str]) -> None:
@@ -934,9 +998,14 @@ def test_allowlist_has_no_stale_entries() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _scan_source(source: str) -> list[Finding]:
+def _scan_source(source: str, modules: Mapping[str, str] | None = None) -> list[Finding]:
+    """Findings in ``source``; ``modules`` maps a referee module name to the
+    source its imports resolve to (synthetic sibling modules)."""
     tree = ast.parse(source)
-    sorted_returning_funcs = _collect_sorted_returning_funcs(tree)
+    imported = (
+        _imported_sorted_returning_funcs(tree, (modules or {}).get) if modules else frozenset()
+    )
+    sorted_returning_funcs = _collect_sorted_returning_funcs(tree, imported)
     findings: list[Finding] = []
 
     def visit(node: ast.AST, stack: list[str]) -> None:
@@ -1096,6 +1165,69 @@ def pick(tied, counts):
     return leaders[0]
 """
     findings = _scan_source(source)
+    assert [(f.qualname, f.rule) for f in findings] == [("pick", RULE_SORTED_INDEX0)]
+
+
+def test_rule_traces_sorted_through_a_helper_chain_across_modules() -> None:
+    """#617 review: a sorted-returning helper two modules away is followed.
+    ``_top_scorers`` returns sorted(...) in reality_check_rules; a wrapper in
+    reality_check_floors returns its result; reality_check_place indexes that
+    at [0]. Inside the old single reality_check.py the guard caught this
+    shape, so after the split it still must."""
+    modules = {
+        "src.agents.referee.reality_check_rules": """
+def _top_scorers(scores):
+    top = max(scores.values())
+    return sorted(e for e, s in scores.items() if s == top)
+""",
+        "src.agents.referee.reality_check_floors": """
+from src.agents.referee.reality_check_rules import _top_scorers
+
+
+def _planted_wrap(scores):
+    return _top_scorers(scores)
+""",
+    }
+    place = """
+from src.agents.referee.reality_check_floors import _planted_wrap
+
+
+def pick(scores):
+    ranked = _planted_wrap(scores)
+    return ranked[0]
+"""
+    findings = _scan_source(place, modules)
+    assert [(f.qualname, f.rule) for f in findings] == [("pick", RULE_SORTED_INDEX0)]
+
+
+def test_import_following_terminates_on_a_cycle() -> None:
+    """Two referee modules importing each other: the chain is still followed
+    (``_helper`` is sorted-returning through ``a``) and the walk ends."""
+    modules = {
+        "src.agents.referee.a": """
+from src.agents.referee.b import _helper
+
+
+def _sorted_names(xs):
+    return sorted(xs)
+""",
+        "src.agents.referee.b": """
+from src.agents.referee.a import _sorted_names
+
+
+def _helper(xs):
+    return _sorted_names(xs)
+""",
+    }
+    caller = """
+from src.agents.referee.b import _helper
+
+
+def pick(xs):
+    ranked = _helper(xs)
+    return ranked[0]
+"""
+    findings = _scan_source(caller, modules)
     assert [(f.qualname, f.rule) for f in findings] == [("pick", RULE_SORTED_INDEX0)]
 
 

@@ -1934,7 +1934,7 @@ _DYNAMODB_ALTERNATIVE_ANTI_PATTERNS = frozenset(
     {"no-relational-need", "single-access-pattern-table"}
 )
 
-# The capability gate (assignment_resolver.py, reality_check.py) and the
+# The capability gate (assignment_resolver.py, reality_check_rules.py) and the
 # utility pin (#327) already explain themselves in a query's own
 # assignment_reason text ("DynamoDB lacks required capability: aggregation,
 # complex_joins", "utility/metadata statement -- kept on source-compatible

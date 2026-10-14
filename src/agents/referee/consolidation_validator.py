@@ -511,7 +511,7 @@ def _tied_candidate_pool(
     original_tied: list[str] | None, safe_destinations: list[str]
 ) -> list[str]:
     """ADR-031 Decision 12, the same restriction
-    ``reality_check._place_settled_queries._candidate_pool`` applies: a
+    ``reality_check_place._place_settled_queries._candidate_pool`` applies: a
     query (or group) that already carries ``tied_engines`` is re-resolved
     among just the originally tied engines that are still safe
     destinations FIRST -- never opened up to the full safe-destination set
@@ -553,7 +553,7 @@ def _eligible_destinations(
 ) -> list[str]:
     """``scores``' own candidates (already proven serviceable by the shared
     scorer) filtered through the SAME eligibility rule Phase 2 uses
-    (``reality_check._query_eligible_engines``/``_group_eligible_engines``,
+    (``reality_check_rules._query_eligible_engines``/``_group_eligible_engines``,
     #579 round 3): the write/ownership gate and specialist-absorb
     restriction (``may_absorb``, which calls ``can_own``), and the
     join-off-a-non-Aurora-engine-never-onto-DynamoDB block. Without this,
@@ -649,7 +649,7 @@ def sanity_sweep(
     co-dependency group, any one member failing either of those on a given
     candidate, which excludes that candidate for every member; or no
     candidate passing the SAME eligibility rule Phase 2 applies to every
-    move (``reality_check._query_eligible_engines``/``_group_eligible_
+    move (``reality_check_rules._query_eligible_engines``/``_group_eligible_
     engines``, round 3) -- the write/ownership gate and specialist-absorb
     restriction (``may_absorb``), and the join-off-a-non-Aurora-engine-
     never-onto-DynamoDB block. A query the shared scorer calls serviceable
@@ -702,7 +702,7 @@ def sanity_sweep(
             production handler does not build one for this phase, so this
             is ``None`` there and recording is simply skipped.
         query_signals: ``{query_id: [triage_signal_names]}``
-            (:func:`~src.agents.referee.reality_check._build_query_signals`),
+            (:func:`~src.agents.referee.reality_check_rules._build_query_signals`),
             fed to the eligibility check's specialist-absorb rule
             (``may_absorb``) -- missing or empty means no engine is
             treated as having a matching specialty, the more conservative
