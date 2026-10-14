@@ -370,9 +370,12 @@ class TestFinalize:
 
 
 def test_synthesize_command_requires_matching_the_effective_list() -> None:
-    text = (REPO / ".claude" / "commands" / "synthesize.md").read_text()
-    assert "effective_architecture" in text
-    assert "deterministic summary" in text.lower()
+    """The rule lives in the shared skill, which /synthesize reads (#628)."""
+    command = (REPO / ".claude" / "commands" / "synthesize.md").read_text()
+    skill = (REPO / "src" / "skills" / "executive-summary.md").read_text()
+    assert "src/skills/executive-summary.md" in command
+    assert "effective_architecture" in skill
+    assert "deterministic summary" in skill.lower()
 
 
 def test_bedrock_prompt_carries_the_effective_architecture(det) -> None:

@@ -19,6 +19,7 @@ import json
 import logging
 from collections import Counter
 from collections.abc import Iterable, Mapping
+from functools import cache
 
 from src.agents.prompt_framing import SYSTEM_PROMPT_DATA_DIRECTIVE, frame_untrusted
 from src.agents.referee.assignment_resolver import RoutingTrace
@@ -41,6 +42,7 @@ from src.shared.models import (
     converse_request_fields,
     resolve_model_id,
 )
+from src.shared.skill_sections import skill_sections, skill_subsections
 
 logger = logging.getLogger(__name__)
 
@@ -63,38 +65,45 @@ BLOCKING_RULES: tuple[str, ...] = (
     BLOCKING_RULE_MIXED,
 )
 
-# Engine-specific context for the LLM to understand architectural constraints
-ENGINE_CONTEXT: dict[str, str] = {
-    "dynamodb": (
-        "DynamoDB is a key-value/document store. Access patterns MUST be defined upfront. "
-        "It excels at: single-item lookups by primary key, range queries on sort key, "
-        "denormalized aggregates via GSI. "
-        "It struggles with: ad-hoc queries, multi-table JOINs (requires denormalization), "
-        "full-text search (no LIKE '%...%'), complex aggregations across partitions, "
-        "queries that scan large datasets without a known partition key, "
-        "transactions over 100 actions or 4 MB."
-    ),
-    "documentdb": (
-        "DocumentDB is a document database (MongoDB-compatible). "
-        "It excels at: flexible schemas, nested document queries, aggregation pipelines, "
-        "multi-document ACID transactions (one-minute limit), $regex text matching (basic), "
-        "JOINs via $lookup, basic English text indexes; on 8.0 instance-based clusters also "
-        "$graphLookup, $facet, $setWindowFields and correlated $lookup. "
-        "It struggles with: full-text search that needs fuzzy matching or language "
-        "analyzers (text indexes score by term frequency with field weights only, "
-        "English only, one per collection), write throughput beyond one writer instance "
-        "(instance-based clusters; elastic clusters shard writes but drop transactions "
-        "and most 8.0 operators)."
-    ),
-    "opensearch": (
-        "OpenSearch is a search and analytics engine. "
-        "It excels at: full-text search, fuzzy matching, aggregations, analytics, "
-        "time-series data, geo-spatial queries, faceted search. "
-        "It struggles with: ACID transactions, strong consistency, "
-        "primary write path (not a source of truth), complex relational queries, "
-        "frequent single-document updates (reindexing cost)."
-    ),
-}
+# The review instruction and the engine capability reference live in one skill
+# file that ``/reality-check`` (Claude Code) also reads, so a moved query gets
+# the same instruction in both modes (#628). ``ENGINE_CONTEXT`` maps an engine
+# id to its capability text from that file; every engine has an entry. Both
+# are loaded on first use, so a deterministic run (``--llm-mode none``) never
+# depends on the prompt file.
+CONSOLIDATION_REVIEW_SKILL = "consolidation-review.md"
+
+
+@cache
+def engine_context() -> dict[str, str]:
+    """``{engine: capability text}`` from the skill's Engine Capabilities section."""
+    return dict(skill_subsections(CONSOLIDATION_REVIEW_SKILL, "Engine Capabilities"))
+
+
+@cache
+def validator_system_prompt() -> str:
+    """The validator's system prompt: the skill's instruction and flag criteria."""
+    review = skill_sections(CONSOLIDATION_REVIEW_SKILL)
+    return (
+        "You are a database migration expert reviewing engine consolidation decisions.\n\n"
+        + review["Instruction"]
+        + "\n\nFLAG WHEN:\n"
+        + review["Flag When"]
+        + "\n\nDO NOT FLAG:\n"
+        + review["Do Not Flag"]
+        + "\n\nRespond with JSON only.\n\n"
+        + SYSTEM_PROMPT_DATA_DIRECTIVE
+    )
+
+
+def __getattr__(name: str) -> object:
+    """``ENGINE_CONTEXT`` and ``VALIDATOR_SYSTEM_PROMPT``, loaded on first access."""
+    if name == "ENGINE_CONTEXT":
+        return engine_context()
+    if name == "VALIDATOR_SYSTEM_PROMPT":
+        return validator_system_prompt()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 # Maximum queries to send in one validation call (token budget)
 MAX_QUERIES_PER_CALL = 30
@@ -103,13 +112,6 @@ MAX_QUERIES_PER_CALL = 30
 # flagged with a short reason, in compact JSON. Owned by the VALIDATOR role
 # (src/shared/models.py), which raises it on families that think by default.
 VALIDATOR_MAX_TOKENS = ROLE_SPECS[Role.VALIDATOR].max_tokens
-
-VALIDATOR_SYSTEM_PROMPT = (
-    "You are a database migration expert validating engine consolidation decisions. "
-    "Be conservative: only flag queries that are genuinely unserviceable. "
-    "Most queries can be served by any engine with proper modeling. "
-    "Respond with JSON only.\n\n" + SYSTEM_PROMPT_DATA_DIRECTIVE
-)
 
 
 class ValidationFailed(Exception):
@@ -1032,7 +1034,7 @@ def _build_validation_prompt(
     untrusted data, never instructions. ``batch`` is ``("start-end", total)``
     when the consolidation's moved queries are reviewed in several calls.
     """
-    target_context = ENGINE_CONTEXT.get(to_engine, f"{to_engine} database")
+    target_context = engine_context().get(to_engine, f"{display_engine(to_engine)} database")
 
     queries_block = ""
     for q in queries:
@@ -1052,16 +1054,8 @@ def _build_validation_prompt(
         f"DECISION: Move {scope} from {from_engine} to {to_engine}.\n\n"
         f"TARGET ENGINE CAPABILITIES:\n{target_context}\n\n"
         f"QUERIES BEING MOVED:\n" + frame_untrusted(queries_block, label="moved queries") + "\n\n"
-        f"TASK: For each query above, determine if {to_engine} can realistically serve it "
-        f"without significant degradation. Consider:\n"
-        f"- Can the access pattern be modeled naturally on {to_engine}?\n"
-        f"- Would it require extreme denormalization or client-side processing?\n"
-        f"- Is the query pattern fundamentally incompatible with {to_engine}'s architecture?\n\n"
-        f"DO NOT flag queries just because they require denormalization — that's expected. "
-        f"Only flag queries where {to_engine} is a genuinely poor fit that would result in:\n"
-        f"- Unacceptable performance (full table scans on key-value store)\n"
-        f"- Architectural impossibility (full-text search on DynamoDB)\n"
-        f"- Unreasonable complexity (5+ GSIs for a single query pattern)\n\n"
+        f"TASK: For each query above, decide whether {to_engine} can serve it, "
+        f"following the instruction and the flag criteria you were given.\n\n"
         f"Respond with ONLY a compact JSON array of flagged queries (no indentation, "
         f"a reason of at most 15 words). If all queries are fine, respond with an "
         f"empty array [].\n"
@@ -1169,7 +1163,7 @@ def _try_strands_validator(
         model = build_bedrock_model(Role.VALIDATOR, model_id=_validator_model_id())
         agent = Agent(
             model=model,
-            system_prompt=VALIDATOR_SYSTEM_PROMPT,
+            system_prompt=validator_system_prompt(),
             tools=[],
             callback_handler=None,
         )
@@ -1217,7 +1211,7 @@ def _try_boto3_validator(
         response = client.converse(
             **converse_request_fields(Role.VALIDATOR, model_id=_validator_model_id()),
             messages=[{"role": "user", "content": [{"text": prompt}]}],
-            system=[{"text": VALIDATOR_SYSTEM_PROMPT}],
+            system=[{"text": validator_system_prompt()}],
         )
         # Newer models may lead with a reasoning block; take the first text block.
         response_text = next(

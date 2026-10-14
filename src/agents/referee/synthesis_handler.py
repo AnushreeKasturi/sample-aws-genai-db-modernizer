@@ -45,7 +45,9 @@ from src.agents.referee.synthesis_report import (
     build_tco_analysis,
     designed_and_not_designed_engines,
     generate_executive_summary,
+    schema_design_case,
     schema_table_defs,
+    source_database_label,
     source_table_count,
 )
 from src.agents.referee.table_resolution import PSEUDO_TABLES, TableNameResolver
@@ -347,6 +349,9 @@ def run_synthesis_deterministic(
     return {
         "job_id": job_id,
         "database_name": database_name,
+        # The job's own source engine, as the executive summary names it (#628):
+        # data, so the shared skill never carries a hardcoded engine list.
+        "source_database": source_database_label(source_database_engine(data.collector)),
         "timestamp": datetime.now(UTC).isoformat(),
         "needs_deeper_analysis": needs_deeper,
         "ranking": ranking,
@@ -439,7 +444,7 @@ def prepare_synthesis_llm_input(deterministic_result: dict) -> dict:
     Keys returned:
         effective_architecture, deterministic_summary, ranking, query_groups,
         tco_analysis, risk_assessment, table_mappings, trade_offs, migration_waves,
-        schema_design_status
+        source_database, schema_design_status
 
     ``effective_architecture`` comes first: the compact per-engine table list, top
     query groups and capabilities, plus the eliminated engines, together with the
@@ -456,7 +461,9 @@ def prepare_synthesis_llm_input(deterministic_result: dict) -> dict:
     same split ``generate_executive_summary`` uses for the Bedrock path): the
     external (Claude Code) path builds its own prompt from this payload, so it
     needs the same signal, or it narrates a design for an engine that never
-    got one exactly the way the Bedrock prompt used to (#132).
+    got one exactly the way the Bedrock prompt used to (#132). Its ``case``
+    names the ``Schema Design Status`` case of ``src/skills/executive-summary.md``
+    that applies, the same one the Bedrock prompt uses (#628).
     """
     designed, not_designed = designed_and_not_designed_engines(deterministic_result["ranking"])
     return {
@@ -469,7 +476,12 @@ def prepare_synthesis_llm_input(deterministic_result: dict) -> dict:
         "table_mappings": deterministic_result["table_mappings"],
         "trade_offs": deterministic_result["trade_offs"],
         "migration_waves": deterministic_result.get("migration_waves"),
-        "schema_design_status": {"designed": designed, "not_designed": not_designed},
+        "source_database": deterministic_result.get("source_database", ""),
+        "schema_design_status": {
+            "case": schema_design_case(designed, not_designed),
+            "designed": designed,
+            "not_designed": not_designed,
+        },
     }
 
 
@@ -720,6 +732,7 @@ def run_synthesis(
             result["table_mappings"],
             trade_offs,
             effective_architecture=result["effective_architecture"],
+            source_database=result.get("source_database", ""),
         )
         # generate_executive_summary returns the deterministic text when the LLM fails;
         # only a real LLM narrative goes through the grounding post-check.

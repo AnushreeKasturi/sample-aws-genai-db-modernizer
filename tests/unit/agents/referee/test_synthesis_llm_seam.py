@@ -448,11 +448,12 @@ class TestPrepareSynthesisLlmInputHasCorrectKeys:
 
     def test_schema_design_status_has_designed_and_not_designed(self):
         status = prepare_synthesis_llm_input(self._det())["schema_design_status"]
-        assert set(status) == {"designed", "not_designed"}
+        assert set(status) == {"case", "designed", "not_designed"}
+        assert status["case"] in {"all_designed", "some_designed", "none_designed"}
 
-    def test_exactly_ten_keys(self):
+    def test_exactly_eleven_keys(self):
         payload = prepare_synthesis_llm_input(self._det())
-        assert len(payload) == 10
+        assert len(payload) == 11
 
     def test_deterministic_summary_matches_result(self):
         det = self._det()
