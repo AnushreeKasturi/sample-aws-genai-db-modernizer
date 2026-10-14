@@ -590,3 +590,186 @@ def test_confidence_evidence_flags_a_signal_only_fit_for_the_judge() -> None:
     legacy["ranking"][0]["confidence_score"] = 50
     first = judge_facts.build_facts(legacy)["engines"][0]
     assert first["confidence_evidence"] is None
+
+
+# ---------------------------------------------------------------------------
+# Printed totals (#646)
+# ---------------------------------------------------------------------------
+
+
+def _ap(pattern_id: str, engine: str, in_scope: bool = True) -> dict:
+    return {"pattern_id": pattern_id, "engine": engine, "in_scope": in_scope}
+
+
+def _designed(target: str, tables: int, **extra) -> dict:
+    return {
+        "target": target,
+        "target_tables": tables,
+        "schema_design_available": True,
+        "assigned_queries": 5,
+        **extra,
+    }
+
+
+def test_totals_sum_over_designed_engines_only() -> None:
+    """The summary's "N target objects ... M in-scope access patterns" covers the
+    engines with workload and a schema design (``designed_and_not_designed_engines``):
+    not an engine without a design, nor one that was routed nothing."""
+    report = _report(
+        ranking=[
+            _designed("dynamodb", 20),
+            _designed("elasticache", 15, assigned_queries=0, cache_overlay_queries=4),
+            {**_designed("opensearch", 8), "schema_design_available": False},
+            _designed("documentdb", 6, assigned_queries=0),
+        ],
+        query_groups=[
+            {
+                "group_name": "A",
+                "engines": ["dynamodb", "elasticache"],
+                "access_patterns": [_ap("DDB-AP-1", "dynamodb"), _ap("EC-AP-1", "elasticache")],
+            },
+            # DDB-AP-1 is listed in a second group: counted once
+            {
+                "group_name": "B",
+                "engines": ["dynamodb", "opensearch"],
+                "access_patterns": [
+                    _ap("DDB-AP-1", "dynamodb"),
+                    _ap("DDB-AP-2", "dynamodb", False),
+                    _ap("OS-AP-1", "opensearch"),
+                    _ap("DOC-AP-1", "documentdb"),
+                ],
+            },
+            {"group_name": "C", "engines": ["aurora_mysql"], "access_patterns": []},
+        ],
+    )
+    totals = judge_facts.build_facts(report)["totals"]
+    assert totals["target_objects"] == 35
+    assert totals["in_scope_access_patterns"] == 2
+    assert totals["out_of_scope_access_patterns"] == 1
+    assert totals["query_groups"] == 3
+    # the Engineering Report heading leaves out the pure-Aurora group
+    assert totals["query_groups_non_relational"] == 2
+
+
+def test_an_unversioned_ranking_entry_needs_only_a_schema_design() -> None:
+    """No ``assigned_queries`` key (no assignment ran): the design alone decides."""
+    entry = {"target": "dynamodb", "target_tables": 7, "schema_design_available": True}
+    report = _report(ranking=[entry], query_groups=[{"access_patterns": [_ap("P", "dynamodb")]}])
+    totals = judge_facts.build_facts(report)["totals"]
+    assert (totals["target_objects"], totals["in_scope_access_patterns"]) == (7, 1)
+
+
+def test_same_pattern_id_on_two_engines_counts_twice_and_scope_is_or_ed() -> None:
+    report = _report(
+        ranking=[_designed("dynamodb", 1), _designed("documentdb", 1)],
+        query_groups=[
+            {"access_patterns": [_ap("AP-1", "dynamodb"), _ap("AP-1", "documentdb", False)]},
+            # out of scope in one group, in scope in another: in scope (as renderers do)
+            {"access_patterns": [_ap("AP-1", "documentdb")]},
+        ],
+    )
+    totals = judge_facts.build_facts(report)["totals"]
+    assert (totals["in_scope_access_patterns"], totals["out_of_scope_access_patterns"]) == (2, 0)
+
+
+def test_totals_are_null_not_zero_when_the_report_does_not_say() -> None:
+    report = _report()
+    del report["query_groups"]
+    del report["risk_assessment"]["risks"]
+    for entry in report["ranking"]:
+        entry.pop("target_tables", None)
+    totals = judge_facts.build_facts(report)["totals"]
+    for key in (
+        "target_objects",
+        "in_scope_access_patterns",
+        "out_of_scope_access_patterns",
+        "query_groups",
+        "query_groups_non_relational",
+        "open_risks",
+        "resolved_risks",
+        "migration_wave_count",
+    ):
+        assert totals[key] is None, key
+
+
+def test_risk_counts_skip_contentless_entries_like_the_deliverables() -> None:
+    report = _report()
+    report["risk_assessment"]["risks"] = [
+        {"risk_id": "R-1", "description": "[dynamodb] A real risk."},
+        {"risk_id": "R-2", "description": "[dynamodb] unknown:"},
+        {"risk_id": "R-3", "description": "[dynamodb]"},
+    ]
+    report["risk_assessment"]["resolved_risks"] = [
+        {"description": "[aurora_mysql] Moved."},
+        {"description": ""},
+    ]
+    report["migration_waves"] = [{"wave": 1}, {"wave": 2}, {"wave": 3}]
+    totals = judge_facts.build_facts(report)["totals"]
+    assert (totals["open_risks"], totals["resolved_risks"]) == (1, 1)
+    assert totals["migration_wave_count"] == 3
+    report["risk_assessment"]["risks"] = []
+    assert judge_facts.build_facts(report)["totals"]["open_risks"] == 0
+
+
+def test_totals_match_the_figure_the_deterministic_summary_prints() -> None:
+    """Checked against the printed "Schema design produced N target objects: ...; M
+    in-scope access patterns" sentence of the real summary builder, with query groups
+    built from the same schema designs, so a change of definition on either side fails."""
+    from src.agents.referee.synthesis_data import EngineArtifacts, SynthesisData
+    from src.agents.referee.synthesis_report import build_query_groups, build_summary
+    from tests.unit.agents.referee.test_synthesis_summary_split import MAPPINGS, RISKS, TCO, _rank
+
+    def design(prefix: str, scopes: list[bool]) -> dict:
+        return {
+            "table_definitions": [{"table_name": "T", "source_tables": ["wp.t0"]}],
+            "access_patterns": [
+                {
+                    "pattern_id": f"{prefix}-AP-{i}",
+                    "query_ids": [f"q{i}"],
+                    "in_scope": scope,
+                    "operation": "GetItem",
+                    "table_name": "T",
+                }
+                for i, scope in enumerate(scopes)
+            ],
+        }
+
+    queries = [{"query_id": f"q{i}", "tables_accessed": ["wp.t0"]} for i in range(6)]
+    data = SynthesisData(
+        job_id="j",
+        database_name="wp",
+        collector={
+            "database_schema": {"tables": [{"table_id": f"wp.t{i}"} for i in range(4)]},
+            "queries": {"query_patterns": queries},
+        },
+        engines={
+            "dynamodb": EngineArtifacts(
+                "dynamodb", analysis={}, schema_design=design("DDB", [True, True, False])
+            ),
+            "documentdb": EngineArtifacts(
+                "documentdb", analysis={}, schema_design=design("DOC", [True])
+            ),
+        },
+        assignment={
+            "query_assignments": [
+                {"query_id": f"q{i}", "assigned_engine": e, "in_scope": True}
+                for i, e in enumerate(["dynamodb"] * 3 + ["documentdb"] * 2 + ["opensearch"])
+            ]
+        },
+    )
+    ranking = [
+        _rank("dynamodb", 0.5, 3, 50.0, 7, 3, 1),
+        _rank("documentdb", 0.4, 2, 33.3, 4, 1, 1),
+        # routed queries but no schema design: left out of both the sentence and the digest
+        {**_rank("opensearch", 0.3, 1, 16.7, 5, 0, 0), "schema_design_available": False},
+    ]
+    groups = build_query_groups(data)
+    summary = build_summary(data, ranking, MAPPINGS, TCO, RISKS, groups, None)
+    printed = re.search(
+        r"Schema design produced (\d+) target objects:.*?; (\d+) in-scope access patterns?",
+        summary,
+    )
+    assert printed, summary
+    totals = judge_facts.build_facts({"ranking": ranking, "query_groups": groups})["totals"]
+    assert totals["target_objects"] == int(printed.group(1)) == 11
+    assert totals["in_scope_access_patterns"] == int(printed.group(2)) == 3
