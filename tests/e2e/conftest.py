@@ -15,9 +15,10 @@ from typing import Any
 
 import pytest
 
+from tests.e2e.pipeline import SAMPLES as PIPELINE_SAMPLES
 from tests.e2e.pipeline import PipelineResult, _env, from_existing_job, run_pipeline
 
-SAMPLES = ["wordpress", "discourse"]
+SAMPLES = list(PIPELINE_SAMPLES)
 
 REPO = Path(__file__).resolve().parents[2]
 UI_BUILD = REPO / "src" / "ui" / "build"
@@ -96,7 +97,7 @@ def _external_job_result() -> PipelineResult:
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
-    """Parametrize the session `run` fixture: the two deterministic samples
+    """Parametrize the session `run` fixture: the deterministic samples
     normally, or a single "external" param when E2E_ARTIFACT_ROOT/E2E_DB/E2E_JOB
     point the suite at an existing job instead."""
     if "run" not in metafunc.fixturenames:
@@ -177,6 +178,12 @@ def discourse_run(e2e_root: Path) -> PipelineResult:
     return _run_pipeline_cached("discourse", e2e_root / "artifacts", job_id="e2e-disc")
 
 
+@pytest.fixture(scope="session")
+def trailgear_run(e2e_root: Path) -> PipelineResult:
+    """The cached trailgear run (the synthetic SQL Server sample), for heterogeneous-only checks."""
+    return _run_pipeline_cached("trailgear", e2e_root / "artifacts", job_id="e2e-trai")
+
+
 def _ensure_port_free(port: int) -> None:
     """Fail fast, with a clear message, instead of silently talking to whatever
     (possibly stale) process is already listening on ``port``."""
@@ -235,7 +242,7 @@ def _terminate(proc: subprocess.Popen, log_file) -> None:
 
 @pytest.fixture(scope="session")
 def all_runs(e2e_root: Path) -> list[PipelineResult]:
-    """Both samples in ONE artifact root, so the UI lists both jobs. In external-job
+    """Every sample in ONE artifact root, so the UI lists every job. In external-job
     mode (E2E_ARTIFACT_ROOT/E2E_DB/E2E_JOB set) there's only the one job to list."""
     if _external_env() is not None:
         return [_external_job_result()]

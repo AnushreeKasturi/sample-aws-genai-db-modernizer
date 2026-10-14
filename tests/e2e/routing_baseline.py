@@ -6,7 +6,9 @@ facts that would show a drift toward decomposition:
 
 - the owner distribution after Reality Check (share of in-scope queries per engine),
 - the share kept on the source-compatible engine (Aurora MySQL for MySQL,
-  Aurora PostgreSQL for PostgreSQL),
+  Aurora PostgreSQL for PostgreSQL) or, for a heterogeneous source such as SQL
+  Server, on the chosen target Aurora engine (#381; whether that engine counts
+  as source-compatible is #656, and ADR-031 says today it does not),
 - the number of owner engines and the queries each owns,
 - the cache overlay (queries, share of calls), which is never an owner share,
 - the migration wave plan (``report.json``'s ``migration_waves``, #225): engines,
@@ -58,7 +60,7 @@ def _latest(job_dir: Path, sub: str, name: str) -> Path:
 
 def measure(job_dir: Path) -> dict[str, Any]:
     """The routing shape of one job (see module docstring)."""
-    from src.agents.referee.triage import SOURCE_ENGINE_TO_AURORA
+    from src.agents.referee.assignment_resolver import retained_engine_for
     from src.agents.referee.utility_statements import is_utility_statement
     from src.report.renderers import resolve_migration_waves
 
@@ -74,7 +76,18 @@ def measure(job_dir: Path) -> dict[str, Any]:
     source = str(
         ((collector.get("metadata") or {}).get("source_database") or {}).get("engine") or ""
     ).lower()
-    source_compatible = SOURCE_ENGINE_TO_AURORA.get(source, "")
+    # The source's own Aurora dialect, or -- for a heterogeneous source (SQL
+    # Server, the trailgear sample) -- the chosen target Aurora engine
+    # (``retained_engine_for``, #381), the engine production already pins
+    # utility statements to. ADR-031 gives a heterogeneous source no
+    # source-compatible engine; whether the chosen one should count as one is
+    # #656. The key name below is kept for the homogeneous samples.
+    source_compatible = (
+        retained_engine_for(
+            collector, assignment["query_assignments"], assignment.get("aurora_engine_choice")
+        )
+        or ""
+    )
 
     in_scope = [qa for qa in assignment["query_assignments"] if qa.get("in_scope", True)]
     owners = Counter(qa["assigned_engine"] for qa in in_scope)
@@ -190,11 +203,11 @@ def compare(
 
 
 def _write(reason: str) -> None:
-    from tests.e2e.pipeline import run_pipeline
+    from tests.e2e.pipeline import SAMPLES, run_pipeline
 
     samples: dict[str, Any] = {}
     with tempfile.TemporaryDirectory() as tmp:
-        for sample in ("wordpress", "discourse"):
+        for sample in SAMPLES:
             result = run_pipeline(sample, Path(tmp) / "artifacts", job_id=f"baseline-{sample}")
             samples[sample] = measure(result.job_dir())
     previous = json.loads(BASELINE.read_text()) if BASELINE.exists() else {}

@@ -12,6 +12,15 @@ from tests.e2e.pipeline import PipelineResult
 EXPECTED_ENGINES = {
     "wordpress": {"dynamodb", "elasticache", "documentdb", "opensearch", "aurora_mysql"},
     "discourse": {"dynamodb", "elasticache", "documentdb", "opensearch", "aurora_postgresql"},
+    # SQL Server has no Aurora dialect of its own: both Aurora engines compete (#381).
+    "trailgear": {
+        "dynamodb",
+        "elasticache",
+        "documentdb",
+        "opensearch",
+        "aurora_mysql",
+        "aurora_postgresql",
+    },
 }
 
 

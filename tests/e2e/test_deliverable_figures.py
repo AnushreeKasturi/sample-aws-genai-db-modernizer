@@ -68,6 +68,12 @@ KNOWN: dict[tuple[str, str, str], str] = {
     ("discourse", "decision report", "wave1:served"): "#578",
     ("discourse", "engineering report", "wave1:served"): "#578",
     ("discourse", "analysis report", "wave1:served"): "#578",
+    # The same on the synthetic SQL Server sample: its one view,
+    # `vw_ActiveProduct`, on top of the 30 analyzed tables.
+    ("trailgear", "report.json", "wave1:served"): "#578",
+    ("trailgear", "decision report", "wave1:served"): "#578",
+    ("trailgear", "engineering report", "wave1:served"): "#578",
+    ("trailgear", "analysis report", "wave1:served"): "#578",
 }
 
 
